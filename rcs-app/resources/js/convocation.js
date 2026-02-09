@@ -18,8 +18,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!f) return
     
     // Validate page range
-    const sp = parseInt($('#start_page')?.value?.trim() || '0')
-    const ep = parseInt($('#end_page')?.value?.trim() || '0')
+    const sp = parseInt($('#page_start')?.value?.trim() || '0')
+    const ep = parseInt($('#page_end')?.value?.trim() || '0')
     const pageError = $('#pageValidationError')
     
     if (sp && ep && ep < sp) {
