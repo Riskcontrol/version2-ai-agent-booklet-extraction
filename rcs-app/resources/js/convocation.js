@@ -161,17 +161,33 @@ function renderDocs(list){
 async function deleteDoc(id) {
   if (!confirm('Delete this document and its extracted data?')) return
   try {
-    await fetch(API.delete(id), { 
+    const csrfToken = document.querySelector('input[name="_token"]')?.value
+    if (!csrfToken) {
+      alert('Security token missing. Please refresh the page.')
+      return
+    }
+
+    const r = await fetch(API.delete(id), { 
       method: 'DELETE',
       credentials: 'same-origin',
       headers: {
+        'X-CSRF-TOKEN': csrfToken,
         'Accept': 'application/json',
         'X-Requested-With': 'XMLHttpRequest'
       }
     })
+
+    const contentType = r.headers.get('content-type') || ''
+    if (!contentType.includes('application/json')) {
+      throw new Error('Server returned non-JSON response')
+    }
+    const result = await r.json()
+    if (!r.ok) {
+      throw new Error(result.message || result.error || 'Delete failed')
+    }
     loadDocs()
   } catch(err) {
-    alert('Delete failed')
+    alert('Delete failed: ' + (err.message || 'Unknown error'))
   }
 }
 
