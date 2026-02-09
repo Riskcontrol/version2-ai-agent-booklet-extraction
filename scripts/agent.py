@@ -90,6 +90,7 @@ class ConvocationPDFExtractor:
             'course_studied': None,
             'qualification_obtained': None,
             'grade': None,
+            'session': session,  # Track session across pages
         }
         
     def convert_pdf_to_images(self, pdf_path: str, dpi: int = 300) -> List[Image.Image]:
@@ -563,16 +564,15 @@ Return ONLY a JSON object. No explanations."""
             else:
                 print("  ⚠️ No faculty detected on page 1")
             
-            # Try to extract session from cover page if not provided
-            if not self.session or self.session == "2021/2022":
-                print("  🔍 Attempting to detect session from cover page...")
-                detected_session = self.extract_session_from_page(first_page, 1)
-                if detected_session:
-                    print(f"  ✅ Session detected: {detected_session}")
-                    self.session = detected_session
-                    self.last_context['session'] = detected_session
-                else:
-                    print("  ⚠️ No session detected on page 1, using default")
+            # Try to extract session from cover page
+            print("  🔍 Attempting to detect session from cover page...")
+            detected_session = self.extract_session_from_page(first_page, 1)
+            if detected_session:
+                print(f"  ✅ Session detected: {detected_session}")
+                self.session = detected_session
+                self.last_context['session'] = detected_session
+            else:
+                print("  ⚠️ No session detected on page 1, will check subsequent pages")
         
         # Extract from each page with cross-page context retention
         all_records = []
@@ -590,6 +590,15 @@ Return ONLY a JSON object. No explanations."""
                     print(f"  ✅ New faculty detected on page {page_num}: {detected_faculty}")
                     page_context['faculty'] = detected_faculty
                     self.last_context['faculty'] = detected_faculty
+                
+                # Also check for session changes on each page
+                print(f"  🔍 Checking page {page_num} for session...")
+                detected_session = self.extract_session_from_page(image, page_num)
+                if detected_session and detected_session != page_context.get('session'):
+                    print(f"  ✅ New session detected on page {page_num}: {detected_session}")
+                    page_context['session'] = detected_session
+                    self.last_context['session'] = detected_session
+                    self.session = detected_session  # Update global session
 
             # Pass previous context to the prompt/model
             records = self.extract_from_page(image, page_num, len(images), prev_context=page_context)
