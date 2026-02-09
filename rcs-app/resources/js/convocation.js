@@ -20,7 +20,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Validate page range
     const sp = parseInt($('#start_page')?.value?.trim() || '0')
     const ep = parseInt($('#end_page')?.value?.trim() || '0')
-    const pageError = $('#pageError')
+    const pageError = $('#pageValidationError')
     
     if (sp && ep && ep < sp) {
       pageError.textContent = 'End page must be greater than or equal to start page'
@@ -40,16 +40,67 @@ document.addEventListener('DOMContentLoaded', () => {
     const apiTier = $('#api_key_tier')?.value || 'GEMINI_API_KEY_FREE_TIER_1'
     fd.append('api_key_tier', apiTier)
 
-    const msg = $('#uploadMsg'); if (msg) msg.textContent = 'Uploading...'
+    // Get CSRF token
+    const csrfToken = document.querySelector('input[name="_token"]')?.value
+    
+    // Show progress bar
+    const uploadBtn = $('#uploadBtn')
+    const uploadProgress = $('#uploadProgress')
+    const progressBar = $('#progressBar')
+    const progressText = $('#progressText')
+    const msg = $('#uploadMsg')
+    
+    uploadBtn.disabled = true
+    uploadProgress.classList.remove('hidden')
+    progressBar.style.width = '0%'
+    progressText.textContent = 'Uploading PDF...'
+    if (msg) msg.textContent = ''
+
     try {
-      const r = await fetch(API.upload, { method:'POST', body: fd })
-      await r.json()
-      if (msg) msg.textContent = 'Queued for processing. Refresh documents shortly.'
-      loadDocs()
-      // Reset form
-      up.reset()
+      // Simulate progress during upload
+      let progress = 0
+      const progressInterval = setInterval(() => {
+        progress += 5
+        if (progress <= 90) {
+          progressBar.style.width = progress + '%'
+        }
+      }, 200)
+
+      const r = await fetch(API.upload, { 
+        method:'POST', 
+        headers: {
+          'X-CSRF-TOKEN': csrfToken
+        },
+        body: fd 
+      })
+      
+      clearInterval(progressInterval)
+      progressBar.style.width = '100%'
+      
+      const result = await r.json()
+      
+      if (r.ok) {
+        progressText.textContent = 'Upload complete! Processing...'
+        if (msg) {
+          msg.textContent = 'Queued for processing. Refresh documents shortly.'
+          msg.className = 'mt-3 text-sm text-green-700'
+        }
+        setTimeout(() => {
+          uploadProgress.classList.add('hidden')
+          loadDocs()
+          up.reset()
+          uploadBtn.disabled = false
+        }, 2000)
+      } else {
+        throw new Error(result.message || 'Upload failed')
+      }
     } catch(err){
-      if (msg) msg.textContent = 'Upload failed.'
+      uploadProgress.classList.add('hidden')
+      uploadBtn.disabled = false
+      if (msg) {
+        msg.textContent = 'Upload failed: ' + (err.message || 'Unknown error')
+        msg.className = 'mt-3 text-sm text-red-600'
+      }
     }
   })
 })

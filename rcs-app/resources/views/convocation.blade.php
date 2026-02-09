@@ -34,6 +34,7 @@
         <section class="bg-white border border-gray-200 rounded-xl p-4 shadow-sm mb-6">
             <h2 class="text-xl font-semibold mb-4">Upload Convocation PDF</h2>
             <form id="uploadForm" class="space-y-3">
+                @csrf
                 <div class="flex flex-col gap-2">
                     <label for="file" class="font-medium">PDF File</label>
                     <input id="file" name="file" type="file" accept="application/pdf" required class="rounded-lg border border-gray-300 px-3 py-2 outline-none focus:border-lime-500" />
@@ -70,11 +71,20 @@
                     </div>
                 </div>
                 <div id="pageValidationError" class="text-red-600 text-sm hidden">End page must be greater than or equal to start page</div>
-                <button type="submit" class="w-full py-3 bg-lime-500 text-[#0a2912] font-semibold rounded-lg hover:bg-lime-600 transition">
+                
+                <!-- Progress bar -->
+                <div id="uploadProgress" class="hidden">
+                    <div class="w-full bg-gray-200 rounded-full h-2.5">
+                        <div id="progressBar" class="bg-lime-500 h-2.5 rounded-full transition-all duration-300" style="width: 0%"></div>
+                    </div>
+                    <p id="progressText" class="text-sm text-gray-600 mt-2 text-center">Uploading...</p>
+                </div>
+                
+                <button id="uploadBtn" type="submit" class="w-full py-3 bg-lime-500 text-[#0a2912] font-semibold rounded-lg hover:bg-lime-600 transition disabled:opacity-50 disabled:cursor-not-allowed">
                     Upload and Extract
                 </button>
             </form>
-            <div id="uploadMsg" class="mt-3 text-sm text-green-700"></div>
+            <div id="uploadMsg" class="mt-3 text-sm"></div>
         </section>
 
         <section class="bg-white border border-gray-200 rounded-xl p-4 shadow-sm mb-6">
