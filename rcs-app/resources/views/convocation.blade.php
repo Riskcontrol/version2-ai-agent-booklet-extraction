@@ -12,12 +12,20 @@
 <body class="bg-green-50 text-gray-900 font-sans">
     <header class="bg-gradient-to-r from-lime-500 to-lime-300 text-[#0a2912] border-b-4 border-lime-600">
         <div class="max-w-5xl mx-auto px-4 py-4">
-            <div class="flex items-center gap-3">
-                <div class="w-10 h-10 rounded-full bg-[#0a2912] text-white flex items-center justify-center font-bold">RC</div>
-                <div>
-                    <h1 class="m-0 text-lg font-semibold">Risk Control Services Nigeria</h1>
-                    <p class="m-0 text-xs opacity-90">Convocation PDF Extraction Console</p>
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-full bg-[#0a2912] text-white flex items-center justify-center font-bold">RC</div>
+                    <div>
+                        <h1 class="m-0 text-lg font-semibold">Risk Control Services Nigeria</h1>
+                        <p class="m-0 text-xs opacity-90">Convocation PDF Extraction Console</p>
+                    </div>
                 </div>
+                <form method="POST" action="{{ route('logout') }}">
+                    @csrf
+                    <button type="submit" class="text-sm px-4 py-2 bg-[#0a2912] text-white rounded-lg hover:bg-opacity-90 transition">
+                        Logout
+                    </button>
+                </form>
             </div>
         </div>
     </header>
@@ -33,27 +41,44 @@
                 <div class="flex flex-col gap-2">
                     <label for="session" class="font-medium">Session (optional)</label>
                     <input id="session" name="session" type="text" placeholder="e.g. 2021/2022" class="rounded-lg border border-gray-300 px-3 py-2 outline-none focus:border-lime-500" />
+                    <small class="text-gray-500 text-xs">If not provided, will be auto-detected from PDF</small>
                 </div>
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
-                    <div class="flex flex-col gap-2">
-                        <label for="start_page" class="font-medium">Start Page (optional)</label>
-                        <input id="start_page" name="start_page" type="number" min="1" placeholder="e.g. 1" class="rounded-lg border border-gray-300 px-3 py-2 outline-none focus:border-lime-500" />
+                <div class="flex flex-col gap-2">
+                    <label for="api_key_tier" class="font-medium">API Key Selection</label>
+                    <select id="api_key_tier" name="api_key_tier" class="rounded-lg border border-gray-300 px-3 py-2 outline-none focus:border-lime-500">
+                        <option value="GEMINI_API_KEY_FREE_TIER_1" selected>Free Tier 1</option>
+                        <option value="GEMINI_API_KEY_FREE_TIER_2">Free Tier 2</option>
+                        <option value="GEMINI_API_KEY_FREE_TIER_3">Free Tier 3</option>
+                        <option value="GEMINI_API_KEY_FREE_TIER_4">Free Tier 4</option>
+                        <option value="GEMINI_API_KEY_FREE_TIER_5">Free Tier 5</option>
+                        <option value="GEMINI_API_KEY_FREE_TIER_6">Free Tier 6</option>
+                        <option value="GEMINI_API_KEY_FREE_TIER_7">Free Tier 7</option>
+                        <option value="GEMINI_API_KEY_FREE_TIER_8">Free Tier 8</option>
+                        <option value="GEMINI_API_KEY_FREE_TIER_9">Free Tier 9</option>
+                        <option value="GEMINI_API_KEY_FREE_TIER_10">Free Tier 10</option>
+                        <option value="GEMINI_API_KEY_PAID">Paid Tier</option>
+                    </select>
+                </div>
+                <div class="flex gap-3">
+                    <div class="flex-1 flex flex-col gap-2">
+                        <label for="page_start" class="font-medium">Start Page (optional)</label>
+                        <input id="page_start" name="page_start" type="number" min="1" placeholder="e.g. 1" class="rounded-lg border border-gray-300 px-3 py-2 outline-none focus:border-lime-500" />
                     </div>
-                    <div class="flex flex-col gap-2">
-                        <label for="end_page" class="font-medium">End Page (optional)</label>
-                        <input id="end_page" name="end_page" type="number" min="1" placeholder="e.g. 50" class="rounded-lg border border-gray-300 px-3 py-2 outline-none focus:border-lime-500" />
+                    <div class="flex-1 flex flex-col gap-2">
+                        <label for="page_end" class="font-medium">End Page (optional)</label>
+                        <input id="page_end" name="page_end" type="number" min="1" placeholder="e.g. 10" class="rounded-lg border border-gray-300 px-3 py-2 outline-none focus:border-lime-500" />
                     </div>
                 </div>
-                <button class="inline-flex items-center gap-2 rounded-lg bg-lime-500 text-[#0a2912] font-semibold px-4 py-2" type="submit">Upload & Process</button>
+                <div id="pageValidationError" class="text-red-600 text-sm hidden">End page must be greater than or equal to start page</div>
+                <button type="submit" class="w-full py-3 bg-lime-500 text-[#0a2912] font-semibold rounded-lg hover:bg-lime-600 transition">
+                    Upload and Extract
+                </button>
             </form>
-            <div id="uploadMsg" class="text-sm text-gray-600 mt-2"></div>
+            <div id="uploadMsg" class="mt-3 text-sm text-green-700"></div>
         </section>
 
         <section class="bg-white border border-gray-200 rounded-xl p-4 shadow-sm mb-6">
-            <div class="flex items-center justify-between mb-3">
-                <h2 class="text-xl font-semibold">Documents</h2>
-                <button id="deleteAllBtn" class="rounded-lg bg-red-600 text-white font-semibold px-4 py-2">Delete All PDFs & Data</button>
-            </div>
+            <h2 class="text-xl font-semibold mb-3">Documents</h2>
             <div class="overflow-auto">
                 <table class="w-full text-sm border-collapse" id="docsTable">
                     <thead>
@@ -65,6 +90,7 @@
                             <th class="text-left p-2 border-b">CSV</th>
                             <th class="text-left p-2 border-b">XLSX</th>
                             <th class="text-left p-2 border-b">Created</th>
+                            <th class="text-left p-2 border-b">Actions</th>
                         </tr>
                     </thead>
                     <tbody></tbody>
@@ -72,15 +98,8 @@
             </div>
         </section>
 
-        <section class="bg-white border border-gray-200 rounded-xl p-4 shadow-sm">
-            <h2 class="text-xl font-semibold mb-3">Search Students</h2>
-            <form id="searchForm" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2 mb-3">
-                <input type="text" id="q" placeholder="Name, course, faculty..." class="rounded-lg border border-gray-300 px-3 py-2 outline-none focus:border-lime-500" />
-                <input type="text" id="faculty" placeholder="Faculty" class="rounded-lg border border-gray-300 px-3 py-2 outline-none focus:border-lime-500" />
-                <input type="text" id="grade" placeholder="Grade (e.g. FIRST CLASS)" class="rounded-lg border border-gray-300 px-3 py-2 outline-none focus:border-lime-500" />
-                <input type="text" id="sess" placeholder="Session (e.g. 2021/2022)" class="rounded-lg border border-gray-300 px-3 py-2 outline-none focus:border-lime-500" />
-                <button class="inline-flex items-center gap-2 rounded-lg bg-lime-500 text-[#0a2912] font-semibold px-4 py-2 md:col-span-2 lg:col-span-1" type="submit">Search</button>
-            </form>
+        <section class="bg-white border border-gray-200 rounded-xl p-4 shadow-sm mb-6">
+            <h2 class="text-xl font-semibold mb-3">Extracted Students</h2>
             <div class="overflow-auto">
                 <table class="w-full text-sm border-collapse" id="resultsTable">
                     <thead>
@@ -107,5 +126,9 @@
             <small>© <span id="year"></span> Risk Control Services Nigeria</small>
         </div>
     </footer>
+
+    <script>
+        document.getElementById('year').textContent = new Date().getFullYear();
+    </script>
 </body>
 </html>

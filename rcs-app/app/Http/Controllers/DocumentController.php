@@ -17,7 +17,8 @@ class DocumentController extends Controller
             'file' => 'required|mimes:pdf|max:30000',
             'session' => 'nullable|string',
             'start_page' => 'nullable|integer|min:1',
-            'end_page' => 'nullable|integer|min:1',
+            'end_page' => 'nullable|integer|min:1|gte:start_page',
+            'api_key_tier' => 'nullable|string|in:GEMINI_API_KEY_FREE_TIER_1,GEMINI_API_KEY_FREE_TIER_2,GEMINI_API_KEY_FREE_TIER_3,GEMINI_API_KEY_FREE_TIER_4,GEMINI_API_KEY_FREE_TIER_5,GEMINI_API_KEY_FREE_TIER_6,GEMINI_API_KEY_FREE_TIER_7,GEMINI_API_KEY_FREE_TIER_8,GEMINI_API_KEY_FREE_TIER_9,GEMINI_API_KEY_FREE_TIER_10,GEMINI_API_KEY_PAID',
         ]);
         $file = $req->file('file');
         $path = $file->store('convocation', 'public');
@@ -41,6 +42,7 @@ class DocumentController extends Controller
                 'callback_url' => route('github.callback'),
                 'result_upload_url' => route('github.uploadResults'),
                 'doc_id' => (string)$doc->id,
+                'api_key_tier' => $req->input('api_key_tier', 'GEMINI_API_KEY_FREE_TIER_1'),
             ];
             // Forward optional page range to workflow (agent.py runner will read PAGE_START/PAGE_END)
             if ($req->filled('start_page')) {
@@ -100,13 +102,35 @@ class DocumentController extends Controller
         return $docs;
     }
 
-    public function deleteAll()
+    public function delete(Request $req, Document $doc)
     {
-        foreach (Document::cursor() as $doc) {
+        // Delete associated students
+        Student::where('document_id', $doc->id)->delete();
+        
+        // Delete PDF file from storage
+        if ($doc->path) {
             Storage::disk('public')->delete($doc->path);
-            $doc->delete();
         }
-        Student::truncate();
+        
+        // Delete CSV/XLSX files if they exist
+        if ($doc->csv_url) {
+            $publicPrefix = Storage::disk('public')->url('');
+            if (str_starts_with($doc->csv_url, $publicPrefix)) {
+                $rel = ltrim(substr($doc->csv_url, strlen($publicPrefix)), '/');
+                Storage::disk('public')->delete($rel);
+            }
+        }
+        if ($doc->xlsx_url) {
+            $publicPrefix = Storage::disk('public')->url('');
+            if (str_starts_with($doc->xlsx_url, $publicPrefix)) {
+                $rel = ltrim(substr($doc->xlsx_url, strlen($publicPrefix)), '/');
+                Storage::disk('public')->delete($rel);
+            }
+        }
+        
+        // Delete document record
+        $doc->delete();
+        
         return response()->json(['deleted' => true]);
     }
 }

@@ -118,6 +118,108 @@ class ConvocationPDFExtractor:
         image.save(buffered, format="PNG")
         return base64.b64encode(buffered.getvalue()).decode('utf-8')
     
+    def extract_faculty_from_cover_page(self, image: Image.Image, page_num: int) -> Optional[str]:
+        """
+        Specifically extract faculty information from cover/header pages using vision
+        
+        Returns:
+            Faculty name if found, None otherwise
+        """
+        prompt = f"""Analyze this page image from a convocation booklet (Page {page_num}).
+
+This appears to be a COVER PAGE or FACULTY HEADER PAGE.
+
+Your task: Identify the FACULTY/SCHOOL/COLLEGE name on this page.
+
+CRITICAL INSTRUCTIONS:
+1. Look for text patterns like:
+   - "SCHOOL OF [subject]" (e.g., "SCHOOL OF ART, DESIGN & PRINTING")
+   - "FACULTY OF [subject]" (e.g., "FACULTY OF ENGINEERING")
+   - "COLLEGE OF [subject]" (e.g., "COLLEGE OF MEDICINE")
+
+2. DO NOT return:
+   - Institution names (e.g., "YABA COLLEGE OF TECHNOLOGY", "UNIVERSITY OF...", "POLYTECHNIC")
+   - Department names without "SCHOOL OF", "FACULTY OF", or "COLLEGE OF" prefix
+   - Program names or degree names
+
+3. Return ONLY the faculty name in this EXACT format:
+   {{"faculty": "SCHOOL OF ART, DESIGN & PRINTING"}}
+
+4. If NO faculty name is found, return:
+   {{"faculty": null}}
+
+Return ONLY a JSON object. No explanations."""
+
+        try:
+            response = self.model.generate_content([prompt, image])
+            response_text = response.text.strip()
+            
+            # Extract JSON
+            json_match = re.search(r'\{.*?\}', response_text, re.DOTALL)
+            if json_match:
+                result = json.loads(json_match.group(0))
+                faculty = result.get('faculty')
+                if faculty and isinstance(faculty, str) and faculty.strip():
+                    # Validate it's not an institution name
+                    faculty_upper = faculty.upper()
+                    if any(inst in faculty_upper for inst in ['UNIVERSITY', 'POLYTECHNIC', 'COLLEGE OF TECHNOLOGY']):
+                        return None
+                    return faculty.strip()
+            return None
+        except Exception as e:
+            print(f"  ⚠️ Error detecting faculty on page {page_num}: {str(e)[:100]}")
+            return None
+    
+    def extract_session_from_page(self, image: Image.Image, page_num: int) -> Optional[str]:
+        """
+        Extract academic session from a page using vision
+        
+        Returns:
+            Session string (e.g., "2021/2022") if found, None otherwise
+        """
+        prompt = f"""Analyze this page image from a convocation booklet (Page {page_num}).
+
+Your task: Identify the ACADEMIC SESSION/YEAR on this page.
+
+CRITICAL INSTRUCTIONS:
+1. Look for session patterns like:
+   - "2021/2022"
+   - "2022/2023"
+   - "2018/2019"
+   - "SESSION: 2021/2022"
+   - "ACADEMIC YEAR: 2021/2022"
+
+2. The session is typically found in:
+   - Page headers (top of page)
+   - Section headers
+   - Near faculty/course information
+
+3. Return ONLY the session in this EXACT format:
+   {{"session": "2021/2022"}}
+
+4. If NO session is found, return:
+   {{"session": null}}
+
+Return ONLY a JSON object. No explanations."""
+
+        try:
+            response = self.model.generate_content([prompt, image])
+            response_text = response.text.strip()
+            
+            # Extract JSON
+            json_match = re.search(r'\{.*?\}', response_text, re.DOTALL)
+            if json_match:
+                result = json.loads(json_match.group(0))
+                session = result.get('session')
+                if session and isinstance(session, str) and session.strip():
+                    # Validate it matches a session pattern (YYYY/YYYY)
+                    if re.match(r'\d{4}/\d{4}', session.strip()):
+                        return session.strip()
+            return None
+        except Exception as e:
+            print(f"  ⚠️ Error detecting session on page {page_num}: {str(e)[:100]}")
+            return None
+    
     def create_extraction_prompt(self, page_num: int, total_pages: int, prev_context: Optional[Dict[str, Optional[str]]] = None) -> str:
         """
         Create detailed extraction prompt for Gemini
@@ -129,12 +231,14 @@ class ConvocationPDFExtractor:
             ctx_course = prev_context.get('course_studied') or ""
             ctx_qual = prev_context.get('qualification_obtained') or ""
             ctx_grade = prev_context.get('grade') or ""
+            ctx_session = prev_context.get('session') or ""
             context_lines = [
                 "KNOWN CONTEXT FROM PREVIOUS PAGE:",
                 f"  • Faculty: {ctx_fac if ctx_fac else '[unknown]'}",
                 f"  • Course/Qualification: {ctx_course if ctx_course else '[unknown]'}",
                 f"  • Short Qualification: {ctx_qual if ctx_qual else '[unknown]'}",
                 f"  • Grade: {ctx_grade if ctx_grade else '[unknown]'}",
+                f"  • Session: {ctx_session if ctx_session else '[unknown]'}",
                 "IF THIS PAGE HAS NO NEW HEADERS, CONTINUE USING THE KNOWN CONTEXT ABOVE.",
             ]
             context_block = "\n" + "\n".join(context_lines) + "\n"
@@ -146,11 +250,23 @@ class ConvocationPDFExtractor:
 1. **DOCUMENT STRUCTURE UNDERSTANDING:**
    - This page may contain 1, 2, or 3 VERTICAL SECTIONS (columns)
    - Each section may have its own headers (Faculty, Course, Grade) OR continue from previous section
-   - Headers appear at the top of sections: FACULTY → COURSE/QUALIFICATION → GRADE → Student Names
+   - Headers appear at the top of sections: FACULTY > COURSE/QUALIFICATION > GRADE > Student Names
    - Student names are listed under their respective grade categories
 
 2. **HEADER DETECTION:**
-   - FACULTY: Usually starts with "FACULTY OF..." (e.g., "FACULTY OF AGRICULTURE")
+   - FACULTY: Can be "FACULTY OF...", "SCHOOL OF...", or "COLLEGE OF..." (e.g., "FACULTY OF AGRICULTURE", "SCHOOL OF ART, DESIGN & PRINTING", "COLLEGE OF MEDICINE")
+     * IMPORTANT: The faculty is a DEPARTMENT/DIVISION within the institution
+     * DO NOT use the institution name (e.g., "YABA COLLEGE OF TECHNOLOGY", "UNIVERSITY OF...", "POLYTECHNIC") as faculty
+     * If you see text like "SCHOOL OF ART, DESIGN & PRINTING" that is the faculty
+     * If you see "YABA COLLEGE OF TECHNOLOGY" alone, that's the institution, NOT the faculty - look for the actual faculty/school name elsewhere on the page
+     * Keep the EXACT faculty name found (e.g., "SCHOOL OF ART, DESIGN & PRINTING", not "FACULTY OF ART")
+     * Faculty can appear on standalone cover page or as section header
+   - SESSION (ACADEMIC YEAR): Look for patterns like "2021/2022", "2022/2023", "2018/2019" in:
+     * Page headers (top of page)
+     * Section headers
+     * Content text near faculty/course headers
+     * Extract the exact session format found (e.g., "2021/2022")
+     * Session can change between sections on the same page
    - COURSE/QUALIFICATION: Degree program (e.g., "B. Agric. (Agricultural Economics and Extension)")
    - GRADE CATEGORIES: 
      * "First Class Honours" or "First Class"
@@ -303,8 +419,8 @@ class ConvocationPDFExtractor:
         return bool(value) and str(value).strip() != ""
 
     def _fill_missing_from_context(self, records: List[Dict[str, Any]], context: Dict[str, Optional[str]]) -> List[Dict[str, Any]]:
-        """Fill missing faculty/course/qualification/grade from last known context for each record."""
-        keys = ['faculty', 'course_studied', 'qualification_obtained', 'grade']
+        """Fill missing faculty/course/qualification/grade/session from last known context for each record."""
+        keys = ['faculty', 'course_studied', 'qualification_obtained', 'grade', 'session']
         filled = []
         for rec in records:
             r = dict(rec) if rec is not None else {}
@@ -312,12 +428,15 @@ class ConvocationPDFExtractor:
                 v = r.get(k)
                 if not self._is_nonempty(v) and self._is_nonempty(context.get(k)):
                     r[k] = context.get(k)
+            # Always ensure session is set from self.session if not already present
+            if not self._is_nonempty(r.get('session')) and self.session:
+                r['session'] = self.session
             filled.append(r)
         return filled
 
     def _update_context_from_records(self, records: List[Dict[str, Any]], context: Dict[str, Optional[str]]) -> Dict[str, Optional[str]]:
         """Update context with the last non-empty values observed in the records order."""
-        keys = ['faculty', 'course_studied', 'qualification_obtained', 'grade']
+        keys = ['faculty', 'course_studied', 'qualification_obtained', 'grade', 'session']
         new_ctx = dict(context)
         for rec in records:
             if not isinstance(rec, dict):
@@ -326,6 +445,9 @@ class ConvocationPDFExtractor:
                 v = rec.get(k)
                 if self._is_nonempty(v):
                     new_ctx[k] = v
+        # Always keep session in context
+        if self.session and not new_ctx.get('session'):
+            new_ctx['session'] = self.session
         return new_ctx
     
     def post_process_records(self, all_records: List[Dict[str, Any]]) -> List[StudentRecord]:
@@ -428,6 +550,30 @@ class ConvocationPDFExtractor:
         
         print(f"\n📊 Processing pages {start_page} to {end_page} ({len(pages_to_process)} pages)\n")
         
+        # Try to detect faculty and session from page 1 if not already set
+        if start_page == 1 and len(pages_to_process) > 0:
+            first_page = pages_to_process[0]
+            
+            # Try to extract faculty from cover page
+            print("  🔍 Attempting to detect faculty from cover page...")
+            detected_faculty = self.extract_faculty_from_cover_page(first_page, 1)
+            if detected_faculty:
+                print(f"  ✅ Faculty detected: {detected_faculty}")
+                self.last_context['faculty'] = detected_faculty
+            else:
+                print("  ⚠️ No faculty detected on page 1")
+            
+            # Try to extract session from cover page if not provided
+            if not self.session or self.session == "2021/2022":
+                print("  🔍 Attempting to detect session from cover page...")
+                detected_session = self.extract_session_from_page(first_page, 1)
+                if detected_session:
+                    print(f"  ✅ Session detected: {detected_session}")
+                    self.session = detected_session
+                    self.last_context['session'] = detected_session
+                else:
+                    print("  ⚠️ No session detected on page 1, using default")
+        
         # Extract from each page with cross-page context retention
         all_records = []
         # Start with any persisted context from previous runs within this instance
@@ -435,6 +581,15 @@ class ConvocationPDFExtractor:
         
         for idx, image in enumerate(tqdm(pages_to_process, desc="Extracting pages")):
             page_num = start_page + idx
+            
+            # Try to detect faculty on any page that looks like a cover page (few students, large text)
+            if page_num > 1:
+                print(f"  🔍 Checking page {page_num} for faculty headers...")
+                detected_faculty = self.extract_faculty_from_cover_page(image, page_num)
+                if detected_faculty and detected_faculty != page_context.get('faculty'):
+                    print(f"  ✅ New faculty detected on page {page_num}: {detected_faculty}")
+                    page_context['faculty'] = detected_faculty
+                    self.last_context['faculty'] = detected_faculty
 
             # Pass previous context to the prompt/model
             records = self.extract_from_page(image, page_num, len(images), prev_context=page_context)

@@ -1,8 +1,7 @@
 const API = {
   upload: '/api/upload',
   list: '/api/documents',
-  delAll: '/api/documents',
-  search: '/api/search'
+  delete: (id) => `/api/documents/${id}`
 }
 
 function $(sel){ return document.querySelector(sel) }
@@ -17,11 +16,29 @@ document.addEventListener('DOMContentLoaded', () => {
     e.preventDefault()
     const f = $('#file').files[0]
     if (!f) return
+    
+    // Validate page range
+    const sp = parseInt($('#start_page')?.value?.trim() || '0')
+    const ep = parseInt($('#end_page')?.value?.trim() || '0')
+    const pageError = $('#pageError')
+    
+    if (sp && ep && ep < sp) {
+      pageError.textContent = 'End page must be greater than or equal to start page'
+      pageError.classList.remove('hidden')
+      return
+    } else {
+      pageError.classList.add('hidden')
+    }
+    
     const fd = new FormData()
     fd.append('file', f)
     if ($('#session')?.value) fd.append('session', $('#session').value)
-    const sp = $('#start_page')?.value?.trim(); if (sp) fd.append('start_page', sp)
-    const ep = $('#end_page')?.value?.trim(); if (ep) fd.append('end_page', ep)
+    if (sp > 0) fd.append('start_page', sp)
+    if (ep > 0) fd.append('end_page', ep)
+    
+    // Add API key tier selection
+    const apiTier = $('#api_key_tier')?.value || 'GEMINI_API_KEY_FREE_TIER_1'
+    fd.append('api_key_tier', apiTier)
 
     const msg = $('#uploadMsg'); if (msg) msg.textContent = 'Uploading...'
     try {
@@ -29,35 +46,10 @@ document.addEventListener('DOMContentLoaded', () => {
       await r.json()
       if (msg) msg.textContent = 'Queued for processing. Refresh documents shortly.'
       loadDocs()
+      // Reset form
+      up.reset()
     } catch(err){
       if (msg) msg.textContent = 'Upload failed.'
-    }
-  })
-
-  const del = $('#deleteAllBtn');
-  if (del) del.addEventListener('click', async () => {
-    if (!confirm('Delete ALL PDFs and extracted data?')) return
-    await fetch(API.delAll, { method: 'DELETE' })
-    loadDocs()
-  })
-
-  const sf = $('#searchForm');
-  if (sf) sf.addEventListener('submit', async (e) => {
-    e.preventDefault()
-    const params = new URLSearchParams()
-    const q = $('#q')?.value?.trim(); if(q) params.set('q', q)
-    const faculty = $('#faculty')?.value?.trim(); if(faculty) params.set('faculty', faculty)
-    const grade = $('#grade')?.value?.trim(); if(grade) params.set('grade', grade)
-    const sess = $('#sess')?.value?.trim(); if(sess) params.set('session', sess)
-
-    const msg = $('#searchMsg'); if (msg) msg.textContent = 'Searching...'
-    try {
-      const r = await fetch(API.search + '?' + params.toString())
-      const j = await r.json()
-      renderResults(j.data || [])
-      if (msg) msg.textContent = `${(j.data||[]).length} results`
-    } catch(err){
-      if (msg) msg.textContent = 'Search failed.'
     }
   })
 })
@@ -85,10 +77,21 @@ function renderDocs(list){
       td(d.status),
       tdLink(d.csv_download, 'csv'),
       tdLink(d.xlsx_download, 'xlsx'),
-      td(new Date(d.created_at).toLocaleString())
+      td(new Date(d.created_at).toLocaleString()),
+      tdDelete(d.id)
     )
     tbody.appendChild(tr)
   })
+}
+
+async function deleteDoc(id) {
+  if (!confirm('Delete this document and its extracted data?')) return
+  try {
+    await fetch(API.delete(id), { method: 'DELETE' })
+    loadDocs()
+  } catch(err) {
+    alert('Delete failed')
+  }
 }
 
 function renderResults(rows){
@@ -124,3 +127,13 @@ function tdLink(url, format){
   }
   return d
 }
+function tdDelete(id){
+  const d=document.createElement('td'); d.className='p-2 border-b'
+  const btn=document.createElement('button');
+  btn.textContent='Delete';
+  btn.className='text-red-600 hover:text-red-800 underline text-sm';
+  btn.onclick = () => deleteDoc(id);
+  d.appendChild(btn);
+  return d;
+}
+

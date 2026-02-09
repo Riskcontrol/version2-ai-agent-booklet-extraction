@@ -1,6 +1,7 @@
 # Dependencies
 node_modules/
 venv/
+.venv/
 .env
 .env.*
 
@@ -34,3 +35,7 @@ Thumbs.db
 
 # Artifacts
 outputs/
+
+# Test PDFs (keep only in local testing)
+*.pdf
+!rcs-app/public/*.pdf

@@ -81,7 +81,7 @@ jobs:
       - name: Install system deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y tesseract-ocr poppler-utils libpoppler-cpp-dev
+          sudo apt-get install -y poppler-utils libpoppler-cpp-dev
       - name: Install Python deps
         run: |
           python -m pip install --upgrade pip
@@ -96,7 +96,7 @@ jobs:
           SOURCE_FILE: source.pdf
           ORIGINAL_FILENAME: ${{ github.event.client_payload.original_filename }}
           SESSION: ${{ github.event.client_payload.session }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets[github.event.client_payload.api_key_tier] || secrets.GEMINI_API_KEY_FREE_TIER_1 }}
           CALLBACK_URL: ''
           CALLBACK_HMAC_SECRET: ''
           RESULT_UPLOAD_URL: ''
@@ -107,8 +107,6 @@ jobs:
           PAGE_END: ${{ github.event.client_payload.page_end }}
           DPI: 300
           MIN_TEXT_WORDS: ${{ github.event.client_payload.min_text_words || 25 }}
-          TESSERACT_PSM: ${{ github.event.client_payload.tesseract_psm }}
-          TESSERACT_LANG: ${{ github.event.client_payload.tesseract_lang }}
         run: |
           # Run the Gemini-based agent extractor; it will create outputs/<base>.csv|xlsx
           python scripts/run_agent.py
