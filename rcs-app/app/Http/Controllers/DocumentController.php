@@ -52,7 +52,7 @@ class DocumentController extends Controller
                 $payload['page_end'] = (int)$req->input('end_page');
             }
             Http::withToken($pat)
-                ->post('https://api.github.com/repos/Riskcontrol/ai_agent_secondlevel_verification/dispatches', [
+                ->post('https://api.github.com/repos/Riskcontrol/version2-ai-agent-booklet-extraction/dispatches', [
                     'event_type' => 'process_pdf',
                     'client_payload' => $payload
                 ]);
