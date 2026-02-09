@@ -81,6 +81,7 @@ document.addEventListener('DOMContentLoaded', () => {
           'Accept': 'application/json',
           'X-Requested-With': 'XMLHttpRequest'
         },
+        credentials: 'same-origin',
         body: fd 
       })
       
@@ -123,7 +124,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
 async function loadDocs(){
   try {
-    const r = await fetch(API.list)
+    const r = await fetch(API.list, {
+      credentials: 'same-origin',
+      headers: {
+        'Accept': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest'
+      }
+    })
     const list = await r.json()
     renderDocs(list)
   } catch(err){
@@ -154,7 +161,14 @@ function renderDocs(list){
 async function deleteDoc(id) {
   if (!confirm('Delete this document and its extracted data?')) return
   try {
-    await fetch(API.delete(id), { method: 'DELETE' })
+    await fetch(API.delete(id), { 
+      method: 'DELETE',
+      credentials: 'same-origin',
+      headers: {
+        'Accept': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest'
+      }
+    })
     loadDocs()
   } catch(err) {
     alert('Delete failed')
