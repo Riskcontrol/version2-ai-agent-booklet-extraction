@@ -33,7 +33,7 @@
     <main class="max-w-5xl mx-auto px-4 py-6">
         <section class="bg-white border border-gray-200 rounded-xl p-4 shadow-sm mb-6">
             <h2 class="text-xl font-semibold mb-4">Upload Convocation PDF</h2>
-            <form id="uploadForm" class="space-y-3">
+            <form id="uploadForm" class="space-y-3" method="POST" action="javascript:void(0);" onsubmit="return false;">
                 @csrf
                 <div class="flex flex-col gap-2">
                     <label for="file" class="font-medium">PDF File</label>
