@@ -40,8 +40,11 @@ return [
     ],
 
     'extractor' => [
-        'secret' => env('EXTRACTOR_CALLBACK_SECRET'),
-        'token' => env('EXTRACTOR_BEARER_TOKEN'),
+        // Backward/forward compatible env var names.
+        // GitHub Actions workflow uses CALLBACK_HMAC_SECRET + RESULT_UPLOAD_TOKEN.
+        // Older deployments used EXTRACTOR_CALLBACK_SECRET + EXTRACTOR_BEARER_TOKEN.
+        'secret' => env('CALLBACK_HMAC_SECRET', env('EXTRACTOR_CALLBACK_SECRET')),
+        'token' => env('RESULT_UPLOAD_TOKEN', env('EXTRACTOR_BEARER_TOKEN')),
     ],
 
 ];

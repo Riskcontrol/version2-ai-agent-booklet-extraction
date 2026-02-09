@@ -72,7 +72,7 @@ class ConvocationPDFExtractor:
     Main extractor class for processing convocation PDFs
     """
     
-    def __init__(self, api_key: str, session: str = "2021/2022"):
+    def __init__(self, api_key: str, session: str = ""):
         """
         Initialize extractor with Gemini API
         
@@ -82,7 +82,7 @@ class ConvocationPDFExtractor:
         """
         genai.configure(api_key=api_key)
         self.model = genai.GenerativeModel('gemini-2.5-flash')
-        self.session = session
+        self.session = (session or "").strip()
         self.extraction_log = []
         # Track last known context across pages to handle pages with only names
         self.last_context: Dict[str, Optional[str]] = {
@@ -90,7 +90,7 @@ class ConvocationPDFExtractor:
             'course_studied': None,
             'qualification_obtained': None,
             'grade': None,
-            'session': session,  # Track session across pages
+            'session': (self.session if self.session else None),
         }
         
     def convert_pdf_to_images(self, pdf_path: str, dpi: int = 300) -> List[Image.Image]:
@@ -198,7 +198,10 @@ CRITICAL INSTRUCTIONS:
 3. Return ONLY the session in this EXACT format:
    {{"session": "2021/2022"}}
 
-4. If NO session is found, return:
+4. IMPORTANT: If you can clearly see MORE THAN ONE distinct session/year on this page, return:
+    {"session": null}
+
+5. If NO session is found, return:
    {{"session": null}}
 
 Return ONLY a JSON object. No explanations."""
@@ -266,8 +269,10 @@ Return ONLY a JSON object. No explanations."""
      * Page headers (top of page)
      * Section headers
      * Content text near faculty/course headers
+         * Often appears as a heading like: "Academic Session: 2013/2014" (or similar)
      * Extract the exact session format found (e.g., "2021/2022")
      * Session can change between sections on the same page
+         * CRITICAL: If the page shows multiple session headings, assign each student the session heading that appears immediately ABOVE their record.
    - COURSE/QUALIFICATION: Degree program (e.g., "B. Agric. (Agricultural Economics and Extension)")
    - GRADE CATEGORIES: 
      * "First Class Honours" or "First Class"
@@ -304,6 +309,7 @@ Return ONLY a JSON object. No explanations."""
        "faculty": "FACULTY OF AGRICULTURE",
        "grade": "Pass",
        "qualification_obtained": "B. Agric.",
+                "session": "2021/2022",
        "page_number": {page_num}
      }}
    ]
@@ -422,16 +428,20 @@ Return ONLY a JSON object. No explanations."""
     def _fill_missing_from_context(self, records: List[Dict[str, Any]], context: Dict[str, Optional[str]]) -> List[Dict[str, Any]]:
         """Fill missing faculty/course/qualification/grade/session from last known context for each record."""
         keys = ['faculty', 'course_studied', 'qualification_obtained', 'grade', 'session']
+        current_ctx = dict(context)
         filled = []
         for rec in records:
             r = dict(rec) if rec is not None else {}
+            # Fill missing fields from the most recent context, updating context as we go.
+            # This allows session/faculty/grade changes within a single page to propagate
+            # correctly in reading order.
             for k in keys:
-                v = r.get(k)
-                if not self._is_nonempty(v) and self._is_nonempty(context.get(k)):
-                    r[k] = context.get(k)
-            # Always ensure session is set from self.session if not already present
-            if not self._is_nonempty(r.get('session')) and self.session:
-                r['session'] = self.session
+                if not self._is_nonempty(r.get(k)) and self._is_nonempty(current_ctx.get(k)):
+                    r[k] = current_ctx.get(k)
+            # Update context using any values observed in this record
+            for k in keys:
+                if self._is_nonempty(r.get(k)):
+                    current_ctx[k] = r.get(k)
             filled.append(r)
         return filled
 

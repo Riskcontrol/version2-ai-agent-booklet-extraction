@@ -64,7 +64,7 @@ def main() -> int:
     source_url = os.getenv('SOURCE_URL', '').strip()
     source_file = os.getenv('SOURCE_FILE', '').strip()
     original_filename = os.getenv('ORIGINAL_FILENAME', 'document.pdf')
-    session = os.getenv('SESSION', '2021/2022')
+    session = os.getenv('SESSION', '').strip()
     page_start = int(os.getenv('PAGE_START', '1') or '1')
     page_end_env = os.getenv('PAGE_END', '').strip()
     page_end = int(page_end_env) if page_end_env else None
