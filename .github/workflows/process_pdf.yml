@@ -97,10 +97,10 @@ jobs:
           ORIGINAL_FILENAME: ${{ github.event.client_payload.original_filename }}
           SESSION: ${{ github.event.client_payload.session }}
           GEMINI_API_KEY: ${{ secrets[github.event.client_payload.api_key_tier] || secrets.GEMINI_API_KEY_FREE_TIER_1 }}
-          CALLBACK_URL: ''
-          CALLBACK_HMAC_SECRET: ''
-          RESULT_UPLOAD_URL: ''
-          RESULT_UPLOAD_TOKEN: ''
+          CALLBACK_URL: ${{ github.event.client_payload.callback_url }}
+          CALLBACK_HMAC_SECRET: ${{ secrets.CALLBACK_HMAC_SECRET }}
+          RESULT_UPLOAD_URL: ${{ github.event.client_payload.result_upload_url }}
+          RESULT_UPLOAD_TOKEN: ${{ secrets.RESULT_UPLOAD_TOKEN }}
           DOC_ID: ${{ github.event.client_payload.doc_id }}
           # If user provided a specific range, honor it; else extractor will process all pages
           PAGE_START: ${{ github.event.client_payload.page_start }}
@@ -115,8 +115,17 @@ jobs:
           base="$(basename "${ORIGINAL_FILENAME:-document.pdf}")"; base="${base%.*}"
           start_label="${PAGE_START:-1}"
           end_label="${PAGE_END:-end}"
-          for f in outputs/${base}.*; do
-            ext="${f##*.}"; mv "$f" "chunks/${base}-p${start_label}-${end_label}.${ext}" || true
+          shopt -s nullglob
+          files=(outputs/"${base}".*)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "[extract] No output files found for base: ${base}"
+            echo "[extract] outputs/ contains:"
+            ls -la outputs || true
+            exit 1
+          fi
+          for f in "${files[@]}"; do
+            ext="${f##*.}"
+            mv -- "$f" "chunks/${base}-p${start_label}-${end_label}.${ext}"
           done
       - name: Upload chunk artifacts
         uses: actions/upload-artifact@v4
