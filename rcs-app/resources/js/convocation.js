@@ -43,6 +43,14 @@ document.addEventListener('DOMContentLoaded', () => {
     // Get CSRF token
     const csrfToken = document.querySelector('input[name="_token"]')?.value
     
+    if (!csrfToken) {
+      if (msg) {
+        msg.textContent = 'Security token missing. Please refresh the page.'
+        msg.className = 'mt-3 text-sm text-red-600'
+      }
+      return
+    }
+    
     // Show progress bar
     const uploadBtn = $('#uploadBtn')
     const uploadProgress = $('#uploadProgress')
@@ -69,13 +77,21 @@ document.addEventListener('DOMContentLoaded', () => {
       const r = await fetch(API.upload, { 
         method:'POST', 
         headers: {
-          'X-CSRF-TOKEN': csrfToken
+          'X-CSRF-TOKEN': csrfToken,
+          'Accept': 'application/json',
+          'X-Requested-With': 'XMLHttpRequest'
         },
         body: fd 
       })
       
       clearInterval(progressInterval)
       progressBar.style.width = '100%'
+      
+      // Check if response is JSON
+      const contentType = r.headers.get('content-type')
+      if (!contentType || !contentType.includes('application/json')) {
+        throw new Error('Server returned non-JSON response. Check if you are logged in.')
+      }
       
       const result = await r.json()
       
@@ -92,7 +108,7 @@ document.addEventListener('DOMContentLoaded', () => {
           uploadBtn.disabled = false
         }, 2000)
       } else {
-        throw new Error(result.message || 'Upload failed')
+        throw new Error(result.message || result.error || 'Upload failed')
       }
     } catch(err){
       uploadProgress.classList.add('hidden')
