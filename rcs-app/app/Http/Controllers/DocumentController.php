@@ -39,8 +39,8 @@ class DocumentController extends Controller
                 'source_url' => $sourceUrl,
                 'original_filename' => $file->getClientOriginalName(),
                 'session' => $doc->session,
-                'callback_url' => route('github.callback'),
-                'result_upload_url' => route('github.uploadResults'),
+                'callback_url' => url(route('github.callback', [], false)),
+                'result_upload_url' => url(route('github.uploadResults', [], false)),
                 'doc_id' => (string)$doc->id,
                 'api_key_tier' => $req->input('api_key_tier', 'GEMINI_API_KEY_FREE_TIER_1'),
             ];
