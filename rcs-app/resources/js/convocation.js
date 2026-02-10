@@ -7,9 +7,66 @@ const API = {
 function $(sel){ return document.querySelector(sel) }
 function el(tag, attrs={}){ const e=document.createElement(tag); Object.assign(e, attrs); return e }
 
+// ---------------------------------------------------------------------------
+// Adaptive polling (auto-refresh) for documents list
+// ---------------------------------------------------------------------------
+let pollTimer = null
+let pollInFlight = false
+let pollDelayMs = 4000
+
+function hasProcessing(list){
+  return Array.isArray(list) && list.some(d => String(d?.status || '').toLowerCase() === 'processing')
+}
+
+function stopPolling(){
+  if (pollTimer) clearTimeout(pollTimer)
+  pollTimer = null
+  pollDelayMs = 4000
+}
+
+function scheduleNextPoll(nextDelayMs){
+  if (pollTimer) clearTimeout(pollTimer)
+  pollTimer = setTimeout(() => {
+    // avoid overlapping requests
+    if (!pollInFlight) loadDocs({ fromPoll: true })
+    else scheduleNextPoll(Math.min((nextDelayMs || pollDelayMs) + 2000, 30000))
+  }, nextDelayMs)
+}
+
+function adjustDelay({ anyProcessing, fromPoll }){
+  // Base behavior:
+  // - While processing: poll fast (4s -> 30s backoff)
+  // - When complete: stop polling
+  // - When tab hidden: slow down a lot
+  const hidden = document.hidden === true
+  if (!anyProcessing) return null
+
+  if (!fromPoll) {
+    // After a user action (upload/delete), poll quickly.
+    pollDelayMs = 3000
+  } else {
+    // Back off gradually during long processing runs.
+    pollDelayMs = Math.min(Math.round(pollDelayMs * 1.25), 30000)
+  }
+
+  if (hidden) {
+    pollDelayMs = Math.max(pollDelayMs, 20000)
+  }
+  return pollDelayMs
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   const y = document.getElementById('year'); if (y) y.textContent = new Date().getFullYear();
-  loadDocs()
+  loadDocs({ fromPoll: false })
+
+  // If user returns to the tab and there are still items processing,
+  // the next poll will happen with a shorter delay.
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && pollTimer) {
+      // trigger a near-immediate refresh
+      scheduleNextPoll(800)
+    }
+  })
 
   const up = $('#uploadForm');
   if (up) up.addEventListener('submit', async (e) => {
@@ -104,7 +161,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         setTimeout(() => {
           uploadProgress.classList.add('hidden')
-          loadDocs()
+          loadDocs({ fromPoll: false })
           up.reset()
           uploadBtn.disabled = false
         }, 2000)
@@ -122,8 +179,9 @@ document.addEventListener('DOMContentLoaded', () => {
   })
 })
 
-async function loadDocs(){
+async function loadDocs(opts = {}){
   try {
+    pollInFlight = true
     const r = await fetch(API.list, {
       credentials: 'same-origin',
       headers: {
@@ -133,8 +191,18 @@ async function loadDocs(){
     })
     const list = await r.json()
     renderDocs(list)
+
+    const any = hasProcessing(list)
+    const next = adjustDelay({ anyProcessing: any, fromPoll: !!opts.fromPoll })
+    if (next == null) {
+      stopPolling()
+    } else {
+      scheduleNextPoll(next)
+    }
   } catch(err){
     // ignore
+  } finally {
+    pollInFlight = false
   }
 }
 
@@ -185,7 +253,7 @@ async function deleteDoc(id) {
     if (!r.ok) {
       throw new Error(result.message || result.error || 'Delete failed')
     }
-    loadDocs()
+    loadDocs({ fromPoll: false })
   } catch(err) {
     alert('Delete failed: ' + (err.message || 'Unknown error'))
   }
