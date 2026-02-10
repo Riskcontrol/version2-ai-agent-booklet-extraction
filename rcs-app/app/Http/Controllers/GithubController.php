@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Models\Document;
 use App\Models\Student;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 
 class GithubController extends Controller
@@ -12,8 +13,20 @@ class GithubController extends Controller
     public function callback(Request $req)
     {
         $sig = $req->header('X-Extractor-Signature');
-        $expected = hash_hmac('sha256', $req->getContent(), config('services.extractor.secret'));
-        if (!hash_equals($expected, (string)$sig)) abort(401);
+        $secret = (string) config('services.extractor.secret');
+        $body = $req->getContent();
+        $expected = hash_hmac('sha256', $body, $secret);
+        if (!hash_equals($expected, (string)$sig)) {
+            Log::warning('extractor callback unauthorized', [
+                'has_sig' => !empty($sig),
+                'sig_len' => is_string($sig) ? strlen($sig) : 0,
+                'secret_set' => $secret !== '',
+                'body_len' => is_string($body) ? strlen($body) : 0,
+                'ip' => $req->ip(),
+                'ua' => substr((string) $req->userAgent(), 0, 120),
+            ]);
+            abort(401);
+        }
 
         $payload = $req->json()->all();
         $doc = Document::where('filename', $payload['filename'] ?? '')->latest()->first();
@@ -53,8 +66,20 @@ class GithubController extends Controller
 
     public function uploadResults(Request $req)
     {
-        $auth = $req->bearerToken();
-        if ($auth !== config('services.extractor.token')) abort(401);
+        // Some server/proxy setups do not forward the Authorization header to PHP.
+        // Accept either a Bearer token OR an explicit header.
+        $auth = $req->bearerToken() ?: $req->header('X-Extractor-Token');
+        $expectedToken = (string) config('services.extractor.token');
+        if ((string)$auth !== $expectedToken) {
+            Log::warning('extractor upload-results unauthorized', [
+                'has_bearer' => !empty($req->bearerToken()),
+                'has_x_token' => !empty($req->header('X-Extractor-Token')),
+                'expected_set' => $expectedToken !== '',
+                'ip' => $req->ip(),
+                'ua' => substr((string) $req->userAgent(), 0, 120),
+            ]);
+            abort(401);
+        }
 
         $docId = $req->input('doc_id');
         $doc = Document::find($docId);

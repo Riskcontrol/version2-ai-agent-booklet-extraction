@@ -68,6 +68,7 @@ def upload_results(upload_url: str, token: str, doc_id: str, paths: Dict[str,str
         headers = {}
         if token:
             headers['Authorization'] = f"Bearer {token}"
+            headers['X-Extractor-Token'] = token
         resp = requests.post(upload_url, files=files, data=data, headers=headers, timeout=120)
         print('[agg] Upload results status:', resp.status_code)
     except Exception as e:
