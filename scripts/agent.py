@@ -199,7 +199,7 @@ CRITICAL INSTRUCTIONS:
    {{"session": "2021/2022"}}
 
 4. IMPORTANT: If you can clearly see MORE THAN ONE distinct session/year on this page, return:
-    {"session": null}
+   {{"session": null}}
 
 5. If NO session is found, return:
    {{"session": null}}
