@@ -273,6 +273,7 @@ Return ONLY a JSON object. No explanations."""
      * Extract the exact session format found (e.g., "2021/2022")
      * Session can change between sections on the same page
          * CRITICAL: If the page shows multiple session headings, assign each student the session heading that appears immediately ABOVE their record.
+         * Practical tip: When a new session heading appears, include the session value on the FIRST student record immediately below it. Subsequent students can omit it until it changes.
    - COURSE/QUALIFICATION: Degree program (e.g., "B. Agric. (Agricultural Economics and Extension)")
    - GRADE CATEGORIES: 
      * "First Class Honours" or "First Class"
@@ -456,9 +457,6 @@ Return ONLY a JSON object. No explanations."""
                 v = rec.get(k)
                 if self._is_nonempty(v):
                     new_ctx[k] = v
-        # Always keep session in context
-        if self.session and not new_ctx.get('session'):
-            new_ctx['session'] = self.session
         return new_ctx
     
     def post_process_records(self, all_records: List[Dict[str, Any]]) -> List[StudentRecord]:
@@ -498,7 +496,8 @@ Return ONLY a JSON object. No explanations."""
                     faculty=_clean(record.get('faculty')),
                     grade=_clean(record.get('grade')),
                     qualification_obtained=_clean(record.get('qualification_obtained')),
-                    session=self.session
+                    # IMPORTANT: session must be per-record (may vary within a page).
+                    session=_clean(record.get('session'))
                 )
                 
                 # Validate record
@@ -579,7 +578,6 @@ Return ONLY a JSON object. No explanations."""
             detected_session = self.extract_session_from_page(first_page, 1)
             if detected_session:
                 print(f"  ✅ Session detected: {detected_session}")
-                self.session = detected_session
                 self.last_context['session'] = detected_session
             else:
                 print("  ⚠️ No session detected on page 1, will check subsequent pages")
@@ -608,7 +606,7 @@ Return ONLY a JSON object. No explanations."""
                     print(f"  ✅ New session detected on page {page_num}: {detected_session}")
                     page_context['session'] = detected_session
                     self.last_context['session'] = detected_session
-                    self.session = detected_session  # Update global session
+                    # Do not update a global session that could overwrite earlier records.
 
             # Pass previous context to the prompt/model
             records = self.extract_from_page(image, page_num, len(images), prev_context=page_context)
