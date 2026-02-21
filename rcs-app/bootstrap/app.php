@@ -12,7 +12,16 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
-        //
+        // API routes in routes/api.php intentionally use `web` middleware for session auth
+        // (CheckAuth relies on session state). Exempt these endpoints from CSRF verification
+        // to avoid intermittent token mismatch for fetch/XHR calls.
+        $middleware->validateCsrfTokens(except: [
+            'api/upload',
+            'api/documents',
+            'api/documents/*',
+            'api/github/callback',
+            'api/github/upload-results',
+        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         //

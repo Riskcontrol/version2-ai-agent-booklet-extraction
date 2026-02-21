@@ -141,6 +141,10 @@ document.addEventListener('DOMContentLoaded', () => {
         credentials: 'same-origin',
         body: fd 
       })
+
+      if (r.status === 413) {
+        throw new Error('File is too large for server upload limit. Please reduce PDF size or increase server limits (Nginx client_max_body_size / PHP upload_max_filesize, post_max_size).')
+      }
       
       clearInterval(progressInterval)
       progressBar.style.width = '100%'

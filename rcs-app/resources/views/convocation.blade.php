@@ -38,6 +38,7 @@
                 <div class="flex flex-col gap-2">
                     <label for="file" class="font-medium">PDF File</label>
                     <input id="file" name="file" type="file" accept="application/pdf" required class="rounded-lg border border-gray-300 px-3 py-2 outline-none focus:border-lime-500" />
+                    <small class="text-gray-500 text-xs">Max upload size: 100MB (PDF only)</small>
                 </div>
                 <div class="flex flex-col gap-2">
                     <label for="session" class="font-medium">Session (optional)</label>

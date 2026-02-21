@@ -14,7 +14,7 @@ class DocumentController extends Controller
     public function upload(Request $req)
     {
         $req->validate([
-            'file' => 'required|mimes:pdf|max:30000',
+            'file' => 'required|mimes:pdf|max:102400',
             'session' => 'nullable|string',
             'start_page' => 'nullable|integer|min:1',
             'end_page' => 'nullable|integer|min:1|gte:start_page',
