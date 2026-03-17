@@ -252,10 +252,12 @@ Return ONLY a JSON object. No explanations."""
 **CRITICAL INSTRUCTIONS:**
 
 1. **DOCUMENT STRUCTURE UNDERSTANDING:**
-   - This page may contain 1, 2, or 3 VERTICAL SECTIONS (columns)
-   - Each section may have its own headers (Faculty, Course, Grade) OR continue from previous section
-   - Headers appear at the top of sections: FACULTY > COURSE/QUALIFICATION > GRADE > Student Names
-   - Student names are listed under their respective grade categories
+    - This page contains student records arranged in 1, 2, or 3 VERTICAL COLUMNS.
+    - Each column is a distinct section. Headers (Faculty, Course, Grade, Session) apply to the student records within their respective column.
+    - Headers typically appear at the top of a column, following a hierarchy: FACULTY > COURSE/QUALIFICATION > GRADE > Student Names.
+    - Student names are listed sequentially under their applicable grade categories within each column.
+    - **CRITICAL: When a column starts without an explicit header (e.g., 'First Class Honours'), you MUST strictly infer the header context (Grade, Faculty, Course, Session) from the LAST KNOWN HEADER at the bottom of the IMMEDIATELY PRECEDING COLUMN on the same page. This is a strict left-to-right propagation rule within the page.**
+    - If an explicit header appears mid-column or at the top of a new column, it overrides any inherited header context for the subsequent records in that column.
 
 2. **HEADER DETECTION:**
    - FACULTY: Can be "FACULTY OF...", "SCHOOL OF...", or "COLLEGE OF..." (e.g., "FACULTY OF AGRICULTURE", "SCHOOL OF ART, DESIGN & PRINTING", "COLLEGE OF MEDICINE")
@@ -274,15 +276,16 @@ Return ONLY a JSON object. No explanations."""
      * Session can change between sections on the same page
          * CRITICAL: If the page shows multiple session headings, assign each student the session heading that appears immediately ABOVE their record.
          * Practical tip: When a new session heading appears, include the session value on the FIRST student record immediately below it. Subsequent students can omit it until it changes.
-   - COURSE/QUALIFICATION: Degree program (e.g., "B. Agric. (Agricultural Economics and Extension)")
-   - GRADE CATEGORIES: 
-     * "First Class Honours" or "First Class"
-     * "Second Class Honours (Upper Division)" or "Second Class Upper"
-     * "Second Class Honours (Lower Division)" or "Second Class Lower"
-     * "Third Class Honours" or "Third Class"
-     * "Pass" or "Pass Degree"
-     * "Upper Credit" / "Lower Credit" / "Distinction"
-    - If no new headers appear, continue with the LAST KNOWN headers from previous sections OR previous page
+    - COURSE/QUALIFICATION: Degree program (e.g., "B. Agric. (Agricultural Economics and Extension)")
+    - GRADE CATEGORIES:
+      * "First Class Honours" or "First Class"
+      * "Second Class Honours (Upper Division)" or "Second Class Upper"
+      * "Second Class Honours (Lower Division)" or "Second Class Lower"
+      * "Third Class Honours" or "Third Class"
+      * "Pass" or "Pass Degree"
+      * "Upper Credit" / "Lower Credit" / "Distinction"
+      * **STRICT RULE FOR GRADE**: If a grade header is missing at the top of a column, it MUST be inherited from the last grade header found at the bottom of the immediately preceding column on the same page. This is a non-negotiable rule for accurate data association.
+    - If no new headers appear, continue with the LAST KNOWN headers from the immediately preceding context within the same column, or from the immediately preceding column if at the start of a new column.
 
 3. **NAME PARSING RULES:**
    - Names follow format: SURNAME, First Name Middle Name(s)
@@ -436,28 +439,40 @@ Return ONLY a JSON object. No explanations."""
             # Fill missing fields from the most recent context, updating context as we go.
             # This allows session/faculty/grade changes within a single page to propagate
             # correctly in reading order.
-            for k in keys:
-                if not self._is_nonempty(r.get(k)) and self._is_nonempty(current_ctx.get(k)):
-                    r[k] = current_ctx.get(k)
-            # Update context using any values observed in this record
+            # First, update current_ctx with any explicit headers found in the current record 'r'
+            # This ensures that if the model explicitly provides a header, it takes precedence.
             for k in keys:
                 if self._is_nonempty(r.get(k)):
                     current_ctx[k] = r.get(k)
+
+            # Then, fill any still-missing fields in 'r' from the updated current_ctx.
+            # This applies the propagation logic from previous records/columns.
+            for k in keys:
+                if not self._is_nonempty(r.get(k)) and self._is_nonempty(current_ctx.get(k)):
+                    r[k] = current_ctx.get(k)
             filled.append(r)
         return filled
 
-    def _update_context_from_records(self, records: List[Dict[str, Any]], context: Dict[str, Optional[str]]) -> Dict[str, Optional[str]]:
-        """Update context with the last non-empty values observed in the records order."""
+    def _get_last_known_context_from_records(self, records: List[Dict[str, Any]], initial_context: Dict[str, Optional[str]]) -> Dict[str, Optional[str]]:
+        """Determines the last known context (grade, faculty, etc.) from a list of extracted records.
+        This is crucial for propagating context from the end of one column to the start of the next.
+        """
         keys = ['faculty', 'course_studied', 'qualification_obtained', 'grade', 'session']
-        new_ctx = dict(context)
+        current_ctx = dict(initial_context) # Start with the context provided (e.g., from previous page)
+
         for rec in records:
             if not isinstance(rec, dict):
                 continue
             for k in keys:
                 v = rec.get(k)
                 if self._is_nonempty(v):
-                    new_ctx[k] = v
-        return new_ctx
+                    current_ctx[k] = v
+        return current_ctx
+
+    def _update_context_from_records(self, records: List[Dict[str, Any]], context: Dict[str, Optional[str]]) -> Dict[str, Optional[str]]:
+        """Update context with the last non-empty values observed in the records order."""
+        # This method is now simplified as _get_last_known_context_from_records handles the core logic
+        return self._get_last_known_context_from_records(records, context)
     
     def post_process_records(self, all_records: List[Dict[str, Any]]) -> List[StudentRecord]:
         """
