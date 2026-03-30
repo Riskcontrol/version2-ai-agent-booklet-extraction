@@ -2,6 +2,8 @@ name: Process Convocation PDF
 on:
   repository_dispatch:
     types: [process_pdf]
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 concurrency:
   group: process-pdf-${{ github.event.client_payload.doc_id || github.run_id }}
   cancel-in-progress: false
@@ -13,7 +15,7 @@ jobs:
       matrix: ${{ steps.make.outputs.matrix }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       - name: Install pdfinfo
         run: |
           sudo apt-get update
@@ -73,9 +75,9 @@ jobs:
     timeout-minutes: 300
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
       - name: Install system deps
@@ -87,7 +89,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
       - name: Download source artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: source-pdf
           path: .
@@ -139,9 +141,9 @@ jobs:
     timeout-minutes: 300
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
       - name: Install Python deps
@@ -149,7 +151,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
       - name: Download chunks
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           path: chunks
           merge-multiple: true
