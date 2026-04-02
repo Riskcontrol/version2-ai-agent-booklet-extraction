@@ -13,6 +13,7 @@ function el(tag, attrs={}){ const e=document.createElement(tag); Object.assign(e
 let pollTimer = null
 let pollInFlight = false
 let pollDelayMs = 4000
+let authRedirectScheduled = false
 
 function hasProcessing(list){
   return Array.isArray(list) && list.some(d => String(d?.status || '').toLowerCase() === 'processing')
@@ -55,6 +56,22 @@ function adjustDelay({ anyProcessing, fromPoll }){
   return pollDelayMs
 }
 
+function handleUnauthorized(){
+  if (authRedirectScheduled) return
+  authRedirectScheduled = true
+  stopPolling()
+
+  const msg = $('#uploadMsg')
+  if (msg) {
+    msg.textContent = 'Your session has expired. Redirecting to login...'
+    msg.className = 'mt-3 text-sm text-red-600'
+  }
+
+  setTimeout(() => {
+    window.location.href = '/login'
+  }, 800)
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   const y = document.getElementById('year'); if (y) y.textContent = new Date().getFullYear();
   loadDocs({ fromPoll: false })
@@ -73,6 +90,26 @@ document.addEventListener('DOMContentLoaded', () => {
     e.preventDefault()
     const f = $('#file').files[0]
     if (!f) return
+
+    // Prevent impossible uploads when server limit is lower than selected file size.
+    const maxUploadMb = Number(up.dataset.maxUploadMb || 0)
+    const fileMb = f.size / (1024 * 1024)
+    const msg = $('#uploadMsg')
+    if (maxUploadMb > 0 && fileMb > maxUploadMb) {
+      if (msg) {
+        msg.textContent = `File is ${fileMb.toFixed(1)}MB, above server limit (${maxUploadMb}MB). Reduce PDF size or increase server upload limits.`
+        msg.className = 'mt-3 text-sm text-red-600'
+      }
+      return
+    }
+
+    if (navigator.onLine === false) {
+      if (msg) {
+        msg.textContent = 'No internet connection. Reconnect and try upload again.'
+        msg.className = 'mt-3 text-sm text-red-600'
+      }
+      return
+    }
     
     // Validate page range
     const sp = parseInt($('#page_start')?.value?.trim() || '0')
@@ -113,18 +150,19 @@ document.addEventListener('DOMContentLoaded', () => {
     const uploadProgress = $('#uploadProgress')
     const progressBar = $('#progressBar')
     const progressText = $('#progressText')
-    const msg = $('#uploadMsg')
     
     uploadBtn.disabled = true
     uploadProgress.classList.remove('hidden')
     progressBar.style.width = '0%'
     progressText.textContent = 'Uploading PDF...'
     if (msg) msg.textContent = ''
+    stopPolling()
 
+    let progressInterval = null
     try {
       // Simulate progress during upload
       let progress = 0
-      const progressInterval = setInterval(() => {
+      progressInterval = setInterval(() => {
         progress += 5
         if (progress <= 90) {
           progressBar.style.width = progress + '%'
@@ -145,8 +183,12 @@ document.addEventListener('DOMContentLoaded', () => {
       if (r.status === 413) {
         throw new Error('File is too large for server upload limit. Please reduce PDF size or increase server limits (Nginx client_max_body_size / PHP upload_max_filesize, post_max_size).')
       }
+      if (r.status === 401) {
+        handleUnauthorized()
+        return
+      }
       
-      clearInterval(progressInterval)
+      if (progressInterval) clearInterval(progressInterval)
       progressBar.style.width = '100%'
       
       // Check if response is JSON
@@ -173,10 +215,15 @@ document.addEventListener('DOMContentLoaded', () => {
         throw new Error(result.message || result.error || 'Upload failed')
       }
     } catch(err){
+      if (progressInterval) clearInterval(progressInterval)
       uploadProgress.classList.add('hidden')
       uploadBtn.disabled = false
       if (msg) {
-        msg.textContent = 'Upload failed: ' + (err.message || 'Unknown error')
+        const errMsg = (err && err.message) ? String(err.message) : 'Unknown error'
+        const networkMsg = (navigator.onLine === false || errMsg.includes('Failed to fetch'))
+          ? 'Upload failed: network connection interrupted. Please reconnect and retry.'
+          : `Upload failed: ${errMsg}`
+        msg.textContent = networkMsg
         msg.className = 'mt-3 text-sm text-red-600'
       }
     }
@@ -193,6 +240,13 @@ async function loadDocs(opts = {}){
         'X-Requested-With': 'XMLHttpRequest'
       }
     })
+    if (r.status === 401) {
+      handleUnauthorized()
+      return
+    }
+    if (!r.ok) {
+      throw new Error(`Documents request failed (${r.status})`)
+    }
     const list = await r.json()
     renderDocs(list)
 
@@ -248,6 +302,10 @@ async function deleteDoc(id) {
         'X-Requested-With': 'XMLHttpRequest'
       }
     })
+    if (r.status === 401) {
+      handleUnauthorized()
+      return
+    }
 
     const contentType = r.headers.get('content-type') || ''
     if (!contentType.includes('application/json')) {
