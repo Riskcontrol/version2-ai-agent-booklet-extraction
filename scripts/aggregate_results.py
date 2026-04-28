@@ -15,8 +15,9 @@ CONVOCATION_COLS = [
 ]
 
 CERTIFICATE_COLS = [
+    'client_name', 'date_received', 'completed_date',
     'name', 'institution', 'course', 'qualification', 'grade',
-    'session', 'matric_number', 'client_name', 'date_received', 'completed_date'
+    'session', 'matric_number'
 ]
 
 
