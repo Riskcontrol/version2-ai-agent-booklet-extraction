@@ -192,6 +192,10 @@ jobs:
           RESULT_UPLOAD_URL: ${{ github.event.client_payload.result_upload_url || 'https://search.riskcontrolnigeria.com/api/github/upload-results' }}
           RESULT_UPLOAD_TOKEN: ${{ secrets.RESULT_UPLOAD_TOKEN }}
           DOC_ID: ${{ github.event.client_payload.doc_id }}
+          EXTRACTION_TYPE: certificates
+          CLIENT_NAME: ${{ github.event.client_payload.client_name }}
+          DATE_RECEIVED: ${{ github.event.client_payload.date_received }}
+          COMPLETED_DATE: ${{ github.event.client_payload.completed_date }}
           AGG_SKIP_DOCX: 'true'
           AGG_MAX_DOCX_ROWS: 0
         run: |

@@ -9,8 +9,26 @@ import hashlib
 import requests
 
 
+CONVOCATION_COLS = [
+    'surname', 'first_name', 'other_name', 'course_studied',
+    'faculty', 'grade', 'qualification_obtained', 'session'
+]
+
+CERTIFICATE_COLS = [
+    'name', 'institution', 'course', 'qualification', 'grade',
+    'session', 'matric_number', 'client_name', 'date_received', 'completed_date'
+]
+
+
 def norm_space(s: str) -> str:
     return " ".join((s or "").split()).strip()
+
+
+def clean_cell(v) -> str:
+    if pd.isna(v):
+        return ''
+    s = norm_space(str(v))
+    return '' if s.lower() in ('nan', 'none', 'null') else s
 
 
 def save_outputs(df: pd.DataFrame, base: str, out_dir: str, *, skip_docx: bool = False, max_docx_rows: int = 3000) -> Dict[str,str]:
@@ -83,6 +101,10 @@ def main():
     result_upload_url = os.getenv('RESULT_UPLOAD_URL', '')
     result_upload_token = os.getenv('RESULT_UPLOAD_TOKEN', '')
     doc_id = os.getenv('DOC_ID', '')
+    extraction_type = os.getenv('EXTRACTION_TYPE', '').strip().lower()
+    fallback_client_name = os.getenv('CLIENT_NAME', '').strip()
+    fallback_date_received = os.getenv('DATE_RECEIVED', '').strip()
+    fallback_completed_date = os.getenv('COMPLETED_DATE', '').strip()
 
     base = os.path.splitext(os.path.basename(original_filename))[0]
     pattern = os.path.join(chunks_dir, f"{base}-p*/*.csv")
@@ -106,18 +128,33 @@ def main():
     if not frames:
         raise SystemExit("No valid CSVs to aggregate")
     df_all = pd.concat(frames, ignore_index=True)
-    # Normalize columns and deduplicate
-    cols = ['surname','first_name','other_name','course_studied','faculty','grade','qualification_obtained','session']
+
+    # Decide which schema to normalize to.
+    if extraction_type not in ('convocation', 'certificates'):
+        certificate_signals = {'name', 'institution', 'qualification', 'matric_number'}
+        extraction_type = 'certificates' if certificate_signals.intersection(set(df_all.columns)) else 'convocation'
+
+    cols = CERTIFICATE_COLS if extraction_type == 'certificates' else CONVOCATION_COLS
     for c in cols:
-        if c in df_all.columns:
-            df_all[c] = df_all[c].astype(str).map(norm_space)
-        else:
+        if c not in df_all.columns:
             df_all[c] = ''
-    df_all = df_all[cols]
+
+    df_all = df_all[cols].copy()
+    for c in cols:
+        df_all[c] = df_all[c].map(clean_cell)
+
+    if extraction_type == 'certificates':
+        if fallback_client_name:
+            df_all['client_name'] = df_all['client_name'].mask(df_all['client_name'].eq(''), fallback_client_name)
+        if fallback_date_received:
+            df_all['date_received'] = df_all['date_received'].mask(df_all['date_received'].eq(''), fallback_date_received)
+        if fallback_completed_date:
+            df_all['completed_date'] = df_all['completed_date'].mask(df_all['completed_date'].eq(''), fallback_completed_date)
+
     before = len(df_all)
     df_all = df_all.drop_duplicates()
     after = len(df_all)
-    print(f"[agg] Aggregated rows: {before} -> {after} (deduped)")
+    print(f"[agg] Aggregated rows ({extraction_type}): {before} -> {after} (deduped)")
 
     out_dir = os.path.join('outputs')
     # DOCX controls via env
