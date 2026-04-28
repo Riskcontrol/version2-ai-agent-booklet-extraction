@@ -1,0 +1,204 @@
+name: Process Certificates PDF
+on:
+  repository_dispatch:
+    types: [process_certificates]
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+concurrency:
+  group: process-certificates-${{ github.event.client_payload.doc_id || github.run_id }}
+  cancel-in-progress: false
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      matrix: ${{ steps.make.outputs.matrix }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: Install pdfinfo
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y poppler-utils
+      - name: Download source PDF
+        run: |
+          curl -L "$SOURCE_URL" -o source.pdf
+        env:
+          SOURCE_URL: ${{ github.event.client_payload.source_url }}
+      - name: Probe pages
+        id: probe
+        run: |
+          PAGES=$(pdfinfo source.pdf | awk -F: '/Pages/ {print $2}' | xargs)
+          echo "total_pages=$PAGES" >> $GITHUB_OUTPUT
+      - name: Upload source artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: source-pdf
+          path: source.pdf
+          overwrite: true
+      - name: Make matrix
+        id: make
+        run: |
+          python - <<'PY'
+          import os, json
+          total = int(os.environ['TOTAL'])
+          size = int(os.environ.get('SIZE','10'))
+          single = (os.environ.get('SINGLE_CHUNK','true').lower() in ('1','true','yes'))
+          pstart = 1
+          pend = total
+          if single:
+              chunks = [{'start': pstart, 'end': pend}]
+          else:
+              chunks = [{'start': i+1, 'end': min(pend, i+size)} for i in range(pstart-1, pend, size)]
+          out = json.dumps(chunks)
+          print(out)
+          with open(os.environ['GITHUB_OUTPUT'],'a') as f:
+            f.write('matrix='+out+'\n')
+          PY
+        env:
+          TOTAL: ${{ steps.probe.outputs.total_pages }}
+          SIZE: ${{ github.event.client_payload.chunk_size || 10 }}
+          SINGLE_CHUNK: ${{ github.event.client_payload.single_chunk || 'true' }}
+
+  extract:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y poppler-utils libpoppler-cpp-dev
+      - name: Install Python deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Download source artifact
+        uses: actions/download-artifact@v5
+        with:
+          name: source-pdf
+          path: .
+      - name: Extract (certificate agent)
+        env:
+          SOURCE_FILE: source.pdf
+          ORIGINAL_FILENAME: ${{ github.event.client_payload.original_filename }}
+          GEMINI_API_KEY: ${{ secrets[github.event.client_payload.api_key_tier] || secrets.GEMINI_API_KEY_FREE_TIER_1 }}
+          CALLBACK_URL: ${{ github.event.client_payload.callback_url }}
+          CALLBACK_HMAC_SECRET: ${{ secrets.CALLBACK_HMAC_SECRET }}
+          RESULT_UPLOAD_URL: ${{ github.event.client_payload.result_upload_url }}
+          RESULT_UPLOAD_TOKEN: ${{ secrets.RESULT_UPLOAD_TOKEN }}
+          DOC_ID: ${{ github.event.client_payload.doc_id }}
+          DATE_RECEIVED: ${{ github.event.client_payload.date_received }}
+          COMPLETED_DATE: ${{ github.event.client_payload.completed_date }}
+          CLIENT_NAME: ${{ github.event.client_payload.client_name }}
+          DPI: 300
+        run: |
+          python scripts/run_certificate_agent.py
+          mkdir -p chunks
+          base="$(basename "${ORIGINAL_FILENAME:-document.pdf}")"; base="${base%.*}"
+          shopt -s nullglob
+          files=(outputs/"${base}".*)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "[extract] No output files found for base: ${base}"
+            ls -la outputs || true
+            exit 1
+          fi
+          for f in "${files[@]}"; do
+            ext="${f##*.}"
+            mv -- "$f" "chunks/${base}-p1-end.${ext}"
+          done
+      - name: Upload chunk artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: chunks
+          path: chunks/*
+
+  aggregate:
+    needs: [plan, extract]
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install Python deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Download chunks
+        uses: actions/download-artifact@v5
+        with:
+          path: chunks
+          merge-multiple: true
+      - name: "Preflight: list chunk CSVs"
+        env:
+          ORIGINAL_FILENAME: ${{ github.event.client_payload.original_filename }}
+        run: |
+          set -euo pipefail
+          base="$(basename "${ORIGINAL_FILENAME:-document.pdf}")"
+          base="${base%.*}"
+          echo "[preflight] Base filename: $base"
+          count=$(find chunks -type f -name "${base}-p*.csv" | wc -l | tr -d ' ')
+          echo "[preflight] CSV chunk files found: $count"
+          if [ "$count" -eq 0 ]; then
+            echo "[preflight] No chunk CSV files found under ./chunks for base ${base}. Failing fast."
+            find chunks -maxdepth 2 -type f | head -n 50 || true
+            exit 1
+          fi
+      - name: "Preflight: connectivity check (5s timeout)"
+        env:
+          RESULT_UPLOAD_URL: ${{ github.event.client_payload.result_upload_url || 'https://search.riskcontrolnigeria.com/api/github/upload-results' }}
+          RESULT_UPLOAD_TOKEN: ${{ secrets.RESULT_UPLOAD_TOKEN }}
+          CALLBACK_URL: ${{ github.event.client_payload.callback_url || 'https://search.riskcontrolnigeria.com/api/github/callback' }}
+        run: |
+          set -euo pipefail
+          check_post() {
+            local url="$1"; shift
+            local extra_headers=("$@")
+            echo "[preflight] Checking POST connectivity: ${url}"
+            code=$(curl -sS -o /dev/null -w "%{http_code}" -X POST -m 5 --connect-timeout 5 \
+                   -H "Content-Type: application/json" "${extra_headers[@]}" \
+                   -d '{"preflight":true,"source":"github-actions"}' "$url" || echo "curl_error")
+            if [ "$code" = "curl_error" ]; then
+              echo "[preflight] Connection to ${url} failed. Failing fast."
+              exit 1
+            fi
+            echo "[preflight] ${url} responded HTTP ${code}."
+          }
+          if [ -n "${RESULT_UPLOAD_URL:-}" ]; then
+            if [ -n "${RESULT_UPLOAD_TOKEN:-}" ]; then
+              check_post "${RESULT_UPLOAD_URL}" -H "Authorization: Bearer ${RESULT_UPLOAD_TOKEN}"
+            else
+              check_post "${RESULT_UPLOAD_URL}"
+            fi
+          fi
+          if [ -n "${CALLBACK_URL:-}" ]; then
+            check_post "${CALLBACK_URL}"
+          fi
+      - name: Aggregate and upload
+        env:
+          ORIGINAL_FILENAME: ${{ github.event.client_payload.original_filename }}
+          CALLBACK_URL: ${{ github.event.client_payload.callback_url || 'https://search.riskcontrolnigeria.com/api/github/callback' }}
+          CALLBACK_HMAC_SECRET: ${{ secrets.CALLBACK_HMAC_SECRET }}
+          RESULT_UPLOAD_URL: ${{ github.event.client_payload.result_upload_url || 'https://search.riskcontrolnigeria.com/api/github/upload-results' }}
+          RESULT_UPLOAD_TOKEN: ${{ secrets.RESULT_UPLOAD_TOKEN }}
+          DOC_ID: ${{ github.event.client_payload.doc_id }}
+          AGG_SKIP_DOCX: 'true'
+          AGG_MAX_DOCX_ROWS: 0
+        run: |
+          python scripts/aggregate_results.py
+      - name: Upload final artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: outputs
+          path: outputs/*
+          overwrite: true

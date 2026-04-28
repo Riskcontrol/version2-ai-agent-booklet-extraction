@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Certificate;
 use App\Models\Document;
 use App\Models\Student;
 use Illuminate\Http\Request;
@@ -47,18 +48,36 @@ class GithubController extends Controller
         $doc->save();
 
         if (!empty($payload['rows']) && is_array($payload['rows'])) {
-            foreach ($payload['rows'] as $r) {
-                Student::create([
-                    'document_id' => $doc->id,
-                    'surname' => $r['surname'] ?? '',
-                    'first_name' => $r['first_name'] ?? '',
-                    'other_name' => $r['other_name'] ?? '',
-                    'course_studied' => $r['course_studied'] ?? null,
-                    'faculty' => $r['faculty'] ?? null,
-                    'grade' => $r['grade'] ?? null,
-                    'qualification_obtained' => $r['qualification_obtained'] ?? null,
-                    'session' => $r['session'] ?? null,
-                ]);
+            if ($doc->extraction_type === 'certificates') {
+                foreach ($payload['rows'] as $r) {
+                    Certificate::create([
+                        'document_id'    => $doc->id,
+                        'date_received'  => $doc->date_received,
+                        'completed_date' => $doc->completed_date,
+                        'client_name'    => $doc->client_name,
+                        'name'           => $r['name'] ?? '',
+                        'institution'    => $r['institution'] ?? '',
+                        'course'         => $r['course'] ?? '',
+                        'qualification'  => $r['qualification'] ?? '',
+                        'grade'          => $r['grade'] ?? '',
+                        'session'        => $r['session'] ?? '',
+                        'matric_number'  => $r['matric_number'] ?? '',
+                    ]);
+                }
+            } else {
+                foreach ($payload['rows'] as $r) {
+                    Student::create([
+                        'document_id' => $doc->id,
+                        'surname' => $r['surname'] ?? '',
+                        'first_name' => $r['first_name'] ?? '',
+                        'other_name' => $r['other_name'] ?? '',
+                        'course_studied' => $r['course_studied'] ?? null,
+                        'faculty' => $r['faculty'] ?? null,
+                        'grade' => $r['grade'] ?? null,
+                        'qualification_obtained' => $r['qualification_obtained'] ?? null,
+                        'session' => $r['session'] ?? null,
+                    ]);
+                }
             }
         }
         return response()->json(['ok' => true]);
@@ -97,17 +116,33 @@ class GithubController extends Controller
                 $header = fgetcsv($h);
                 while (($row = fgetcsv($h)) !== false) {
                     $data = array_combine($header, $row);
-                    Student::create([
-                        'document_id' => $doc->id,
-                        'surname' => $data['surname'] ?? '',
-                        'first_name' => $data['first_name'] ?? '',
-                        'other_name' => $data['other_name'] ?? '',
-                        'course_studied' => $data['course_studied'] ?? null,
-                        'faculty' => $data['faculty'] ?? null,
-                        'grade' => $data['grade'] ?? null,
-                        'qualification_obtained' => $data['qualification_obtained'] ?? null,
-                        'session' => $data['session'] ?? $doc->session,
-                    ]);
+                    if ($doc->extraction_type === 'certificates') {
+                        Certificate::create([
+                            'document_id'    => $doc->id,
+                            'date_received'  => $doc->date_received,
+                            'completed_date' => $doc->completed_date,
+                            'client_name'    => $doc->client_name,
+                            'name'           => $data['name'] ?? '',
+                            'institution'    => $data['institution'] ?? '',
+                            'course'         => $data['course'] ?? '',
+                            'qualification'  => $data['qualification'] ?? '',
+                            'grade'          => $data['grade'] ?? '',
+                            'session'        => $data['session'] ?? '',
+                            'matric_number'  => $data['matric_number'] ?? '',
+                        ]);
+                    } else {
+                        Student::create([
+                            'document_id' => $doc->id,
+                            'surname' => $data['surname'] ?? '',
+                            'first_name' => $data['first_name'] ?? '',
+                            'other_name' => $data['other_name'] ?? '',
+                            'course_studied' => $data['course_studied'] ?? null,
+                            'faculty' => $data['faculty'] ?? null,
+                            'grade' => $data['grade'] ?? null,
+                            'qualification_obtained' => $data['qualification_obtained'] ?? null,
+                            'session' => $data['session'] ?? $doc->session,
+                        ]);
+                    }
                 }
                 fclose($h);
             }

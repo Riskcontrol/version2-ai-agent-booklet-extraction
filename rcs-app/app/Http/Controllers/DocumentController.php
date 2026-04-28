@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Certificate;
 use App\Models\Document;
 use App\Models\Student;
 use Illuminate\Http\Request;
@@ -131,6 +132,92 @@ class DocumentController extends Controller
         // Delete document record
         $doc->delete();
         
+        return response()->json(['deleted' => true]);
+    }
+
+    // -----------------------------------------------------------------------
+    // Certificates
+    // -----------------------------------------------------------------------
+
+    public function uploadCertificates(Request $req)
+    {
+        $req->validate([
+            'file'           => 'required|mimes:pdf|max:102400',
+            'date_received'  => 'nullable|string|max:100',
+            'completed_date' => 'nullable|string|max:100',
+            'client_name'    => 'nullable|string|max:255',
+            'api_key_tier'   => 'nullable|string|in:GEMINI_API_KEY_FREE_TIER_1,GEMINI_API_KEY_FREE_TIER_2,GEMINI_API_KEY_FREE_TIER_3,GEMINI_API_KEY_FREE_TIER_4,GEMINI_API_KEY_FREE_TIER_5,GEMINI_API_KEY_FREE_TIER_6,GEMINI_API_KEY_FREE_TIER_7,GEMINI_API_KEY_FREE_TIER_8,GEMINI_API_KEY_FREE_TIER_9,GEMINI_API_KEY_FREE_TIER_10,GEMINI_API_KEY_PAID',
+        ]);
+
+        $file = $req->file('file');
+        $path = $file->store('certificates', 'public');
+
+        $doc = Document::create([
+            'filename'       => $file->getClientOriginalName(),
+            'path'           => $path,
+            'status'         => 'processing',
+            'extraction_type'=> 'certificates',
+            'date_received'  => $req->input('date_received'),
+            'completed_date' => $req->input('completed_date'),
+            'client_name'    => $req->input('client_name'),
+        ]);
+
+        $sourceUrl = URL::temporarySignedRoute('documents.download', now()->addHours(24), ['doc' => $doc->id]);
+
+        $pat = config('services.github.pat');
+        if (!empty($pat)) {
+            $payload = [
+                'source_url'        => $sourceUrl,
+                'original_filename' => $file->getClientOriginalName(),
+                'callback_url'      => url(route('github.callback', [], false)),
+                'result_upload_url' => url(route('github.uploadResults', [], false)),
+                'doc_id'            => (string)$doc->id,
+                'api_key_tier'      => $req->input('api_key_tier', 'GEMINI_API_KEY_FREE_TIER_1'),
+                'date_received'     => $doc->date_received ?? '',
+                'completed_date'    => $doc->completed_date ?? '',
+                'client_name'       => $doc->client_name ?? '',
+            ];
+            Http::withToken($pat)
+                ->post('https://api.github.com/repos/Riskcontrol/version2-ai-agent-booklet-extraction/dispatches', [
+                    'event_type'     => 'process_certificates',
+                    'client_payload' => $payload,
+                ]);
+        }
+
+        return response()->json(['id' => $doc->id, 'status' => 'processing']);
+    }
+
+    public function indexCertificates()
+    {
+        $docs = Document::where('extraction_type', 'certificates')->latest()->get();
+        $docs->transform(function ($d) {
+            $d->csv_download  = $d->csv_url  ? URL::temporarySignedRoute('documents.downloadOutput', now()->addHours(12), ['doc' => $d->id, 'type' => 'csv'])  : null;
+            $d->xlsx_download = $d->xlsx_url ? URL::temporarySignedRoute('documents.downloadOutput', now()->addHours(12), ['doc' => $d->id, 'type' => 'xlsx']) : null;
+            return $d;
+        });
+        return $docs;
+    }
+
+    public function deleteCertificate(Request $req, Document $doc)
+    {
+        // Delete extracted certificate rows
+        Certificate::where('document_id', $doc->id)->delete();
+
+        // Delete PDF
+        if ($doc->path) {
+            Storage::disk('public')->delete($doc->path);
+        }
+
+        // Delete output files
+        $publicPrefix = Storage::disk('public')->url('');
+        foreach (['csv_url', 'xlsx_url'] as $field) {
+            if ($doc->$field && str_starts_with($doc->$field, $publicPrefix)) {
+                $rel = ltrim(substr($doc->$field, strlen($publicPrefix)), '/');
+                Storage::disk('public')->delete($rel);
+            }
+        }
+
+        $doc->delete();
         return response()->json(['deleted' => true]);
     }
 }

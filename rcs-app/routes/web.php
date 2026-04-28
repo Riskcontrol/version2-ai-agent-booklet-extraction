@@ -11,4 +11,8 @@ Route::middleware(['App\Http\Middleware\CheckAuth'])->group(function () {
     Route::get('/', function () {
         return view('convocation');
     })->name('dashboard');
+
+    Route::get('/certificates', function () {
+        return view('certificates');
+    })->name('certificates');
 });

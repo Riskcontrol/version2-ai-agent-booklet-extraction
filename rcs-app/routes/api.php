@@ -12,6 +12,11 @@ Route::middleware(['web', 'App\Http\Middleware\CheckAuth'])->group(function () {
     Route::post('/upload', [DocumentController::class, 'upload']);
     Route::get('/documents', [DocumentController::class, 'index']);
     Route::delete('/documents/{doc}', [DocumentController::class, 'delete']);
+
+    // Certificates
+    Route::post('/certificates/upload', [DocumentController::class, 'uploadCertificates']);
+    Route::get('/certificates', [DocumentController::class, 'indexCertificates']);
+    Route::delete('/certificates/{doc}', [DocumentController::class, 'deleteCertificate']);
 });
 
 Route::get('/download/{doc}', [DocumentController::class, 'download'])
