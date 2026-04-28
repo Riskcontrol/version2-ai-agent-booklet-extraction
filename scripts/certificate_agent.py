@@ -22,6 +22,7 @@ from pathlib import Path
 
 import pandas as pd
 from PIL import Image
+from PIL.Image import DecompressionBombError
 from pdf2image import convert_from_path
 import google.generativeai as genai
 
@@ -47,6 +48,8 @@ class CertificateRecord:
 
 class CertificatePDFExtractor:
     """Extracts certificate records from a PDF using Gemini Vision."""
+
+    DPI_FALLBACKS = (300, 240, 200, 150)
 
     EXTRACTION_PROMPT = """You are an expert data extractor for Nigerian university/polytechnic certificates.
 
@@ -86,10 +89,28 @@ Rules:
         self.model = genai.GenerativeModel('gemini-2.5-flash')
 
     def convert_pdf_to_images(self, pdf_path: str, dpi: int = 300) -> List[Image.Image]:
-        print(f'[cert_agent] Converting PDF to images (DPI={dpi})...')
-        images = convert_from_path(pdf_path, dpi=dpi)
-        print(f'[cert_agent] {len(images)} pages converted')
-        return images
+        attempted_dpis = []
+        fallback_dpis = [dpi] + [candidate for candidate in self.DPI_FALLBACKS if candidate < dpi]
+
+        for current_dpi in fallback_dpis:
+            attempted_dpis.append(current_dpi)
+            print(f'[cert_agent] Converting PDF to images (DPI={current_dpi})...')
+            try:
+                images = convert_from_path(pdf_path, dpi=current_dpi)
+                print(f'[cert_agent] {len(images)} pages converted at DPI={current_dpi}')
+                return images
+            except DecompressionBombError:
+                if current_dpi == fallback_dpis[-1]:
+                    raise
+                print(
+                    '[cert_agent] Rendered page exceeded Pillow pixel safety limit at '
+                    f'DPI={current_dpi}; retrying with lower DPI.'
+                )
+
+        raise RuntimeError(
+            'Failed to convert PDF to images after trying DPI values: '
+            + ', '.join(str(value) for value in attempted_dpis)
+        )
 
     def encode_image(self, image: Image.Image) -> str:
         buf = io.BytesIO()

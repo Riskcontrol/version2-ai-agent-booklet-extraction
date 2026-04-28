@@ -89,7 +89,7 @@ def main() -> int:
     source_url = os.getenv('SOURCE_URL', '').strip()
     source_file = os.getenv('SOURCE_FILE', '').strip()
     original_filename = os.getenv('ORIGINAL_FILENAME', 'document.pdf')
-    dpi = int(os.getenv('DPI', '300') or '300')
+    dpi = int(os.getenv('DPI', '240') or '240')
 
     # Manual fields
     date_received = os.getenv('DATE_RECEIVED', '').strip()

@@ -97,7 +97,7 @@ jobs:
           DATE_RECEIVED: ${{ github.event.client_payload.date_received }}
           COMPLETED_DATE: ${{ github.event.client_payload.completed_date }}
           CLIENT_NAME: ${{ github.event.client_payload.client_name }}
-          DPI: 300
+          DPI: 240
         run: |
           python scripts/run_certificate_agent.py
           mkdir -p chunks
