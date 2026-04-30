@@ -32,6 +32,10 @@ def clean_cell(v) -> str:
     return '' if s.lower() in ('nan', 'none', 'null') else s
 
 
+def clean_cell_upper(v) -> str:
+    return clean_cell(v).upper()
+
+
 def save_outputs(df: pd.DataFrame, base: str, out_dir: str, *, skip_docx: bool = False, max_docx_rows: int = 3000) -> Dict[str,str]:
     os.makedirs(out_dir, exist_ok=True)
     paths: Dict[str, str] = {}
@@ -151,6 +155,9 @@ def main():
             df_all['date_received'] = df_all['date_received'].mask(df_all['date_received'].eq(''), fallback_date_received)
         if fallback_completed_date:
             df_all['completed_date'] = df_all['completed_date'].mask(df_all['completed_date'].eq(''), fallback_completed_date)
+        # Ensure certificate CSV values are fully uppercase.
+        for c in cols:
+            df_all[c] = df_all[c].map(clean_cell_upper)
 
     before = len(df_all)
     df_all = df_all.drop_duplicates()
