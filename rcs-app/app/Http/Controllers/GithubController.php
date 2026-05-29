@@ -6,11 +6,51 @@ use App\Models\Certificate;
 use App\Models\Document;
 use App\Models\Student;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 
 class GithubController extends Controller
 {
+    private function finalizePartner(Document $doc, string $status, ?int $pagesProcessed = null, ?int $pagesWithResults = null, ?string $failedReason = null): void
+    {
+        if (!$doc->partner_request_id) {
+            return;
+        }
+
+        $baseUrl = rtrim((string) config('services.partner.base_url', ''), '/');
+        $token = (string) config('services.partner.token', '');
+        if ($baseUrl === '' || $token === '') {
+            return;
+        }
+
+        try {
+            $response = Http::withHeaders([
+                    'X-Partner-Token' => $token,
+                    'Accept' => 'application/json',
+                ])
+                ->connectTimeout(5)
+                ->timeout((int) config('services.partner.timeout', 15))
+                ->post($baseUrl . '/api/partner/finalize-extraction', [
+                    'partner_request_id' => (string) $doc->partner_request_id,
+                    'status' => $status,
+                    'pages_processed' => (int) ($pagesProcessed ?? $doc->pages_requested ?? 0),
+                    'pages_with_results' => (int) ($pagesWithResults ?? $doc->pages_with_results ?? 0),
+                    'failed_reason' => $failedReason,
+                ]);
+
+            if ($response->successful()) {
+                $payload = (array) $response->json();
+                $doc->credits_consumed = (int) ($payload['credits_consumed'] ?? $doc->credits_consumed ?? 0);
+                $doc->credits_refunded = (int) ($payload['credits_refunded'] ?? $doc->credits_refunded ?? 0);
+                $doc->credit_status = (string) ($payload['status'] ?? $doc->credit_status ?? 'none');
+                $doc->save();
+            }
+        } catch (\Throwable $e) {
+            Log::warning('partner finalize exception', ['doc_id' => $doc->id, 'message' => $e->getMessage()]);
+        }
+    }
+
     public function callback(Request $req)
     {
         $sig = $req->header('X-Extractor-Signature');
@@ -30,7 +70,8 @@ class GithubController extends Controller
         }
 
         $payload = $req->json()->all();
-        $doc = Document::where('filename', $payload['filename'] ?? '')->latest()->first();
+        $docId = $payload['doc_id'] ?? null;
+        $doc = $docId ? Document::find($docId) : Document::where('filename', $payload['filename'] ?? '')->latest()->first();
         if (!$doc) return response()->noContent();
 
         // Do not overwrite URLs from the upload-results step with runner-local paths like "outputs/*.csv".
@@ -46,6 +87,21 @@ class GithubController extends Controller
             $doc->xlsx_url = $xlsx;
         }
         $doc->save();
+
+        $counts = is_array($payload['counts'] ?? null) ? $payload['counts'] : [];
+        $rowsCount = is_array($payload['rows'] ?? null) ? count($payload['rows']) : (int) ($counts['rows'] ?? 0);
+        $doc->pages_processed = (int) ($payload['pages_processed'] ?? $counts['pages_processed'] ?? $doc->pages_requested ?? 0);
+        $doc->pages_with_results = (int) ($payload['pages_with_results'] ?? $counts['rows'] ?? $rowsCount);
+        $doc->result_rows = $rowsCount;
+        $doc->save();
+
+        $this->finalizePartner(
+            $doc,
+            (($payload['status'] ?? 'success') === 'success') ? 'success' : 'failed',
+            $doc->pages_processed,
+            $doc->pages_with_results,
+            (($payload['status'] ?? 'success') === 'success') ? null : 'Callback marked as failed'
+        );
 
         if (!empty($payload['rows']) && is_array($payload['rows'])) {
             if ($doc->extraction_type === 'certificates') {
@@ -112,9 +168,11 @@ class GithubController extends Controller
             $csvPath = $csvFile->store('processed', 'public');
             $doc->csv_url = Storage::disk('public')->url($csvPath);
 
+            $csvRowCount = 0;
             if (($h = fopen(Storage::disk('public')->path($csvPath), 'r')) !== false) {
                 $header = fgetcsv($h);
                 while (($row = fgetcsv($h)) !== false) {
+                    $csvRowCount++;
                     $data = array_combine($header, $row);
                     if ($doc->extraction_type === 'certificates') {
                         Certificate::create([
@@ -146,12 +204,20 @@ class GithubController extends Controller
                 }
                 fclose($h);
             }
+            $doc->result_rows = $csvRowCount;
         }
         if ($xlsxFile) { $xlsxPath = $xlsxFile->store('processed', 'public'); $doc->xlsx_url = Storage::disk('public')->url($xlsxPath); }
         if ($docxFile) { $docxPath = $docxFile->store('processed', 'public'); $doc->docx_url = Storage::disk('public')->url($docxPath); }
 
+        $summary = json_decode((string) $req->input('summary', '{}'), true);
+        $counts = is_array($summary['counts'] ?? null) ? $summary['counts'] : [];
+
         $doc->status = 'complete';
+        $doc->pages_processed = (int) ($req->input('pages_processed') ?? $counts['pages_processed'] ?? $doc->pages_requested ?? 0);
+        $doc->pages_with_results = (int) ($req->input('pages_with_results') ?? $counts['rows'] ?? 0);
         $doc->save();
+
+        $this->finalizePartner($doc, 'success', $doc->pages_processed, $doc->pages_with_results);
         return response()->json(['ok' => true, 'doc' => $doc]);
     }
 }
