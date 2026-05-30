@@ -48,7 +48,7 @@ return [
     ],
 
     'partner' => [
-        'base_url' => env('PARTNER_BILLING_BASE_URL', 'https://extract.peldargconsulting.com'),
+        'base_url' => env('PARTNER_BILLING_BASE_URL', 'https://extraction.peldargconsulting.com'),
         'token' => env('PARTNER_SHARED_TOKEN'),
         'partner_name' => env('PARTNER_NAME', 'riskcontrol'),
         'signature_secret' => env('PARTNER_SIGNATURE_SECRET', ''),
