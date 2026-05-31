@@ -289,28 +289,53 @@ async function openPaystackPopup() {
     const publicKey = String(data.public_key || '').trim()
     if (!publicKey) throw new Error('Paystack public key is unavailable from billing authority.')
 
-    if (!window.PaystackPop || typeof window.PaystackPop.setup !== 'function') {
+    if (!window.PaystackPop) {
       throw new Error('Paystack inline script failed to load.')
+    }
+
+    const onSuccess = function (response) {
+      verifyReference(String(response.reference || response.trxref || data.reference || ''))
+        .then(function () { return loadPaymentHistory() })
+        .catch(function (error) {
+          showMessage(error?.message || 'Payment verification failed after checkout.', 'text-red-600')
+        })
+        .finally(function () {
+          if (payBtn) payBtn.disabled = false
+        })
+    }
+
+    const onCancel = function () {
+      showMessage('Checkout closed before payment confirmation.', 'text-amber-700')
+      if (payBtn) payBtn.disabled = false
+    }
+
+    // Prefer the newer newTransaction() API (PaystackPop as constructor);
+    // fall back to the legacy setup()+openIframe() if newTransaction is absent.
+    if (typeof window.PaystackPop === 'function' || typeof window.PaystackPop.newTransaction === 'function') {
+      const pop = typeof window.PaystackPop === 'function' ? new window.PaystackPop() : window.PaystackPop
+      pop.newTransaction({
+        key: publicKey,
+        accessCode: String(data.access_code || ''),
+        reference: String(data.reference || ''),
+        onSuccess: onSuccess,
+        onCancel: onCancel,
+      })
+      return
+    }
+
+    // Legacy API fallback
+    if (typeof window.PaystackPop.setup !== 'function') {
+      throw new Error('Paystack inline script API is unsupported.')
     }
 
     const handler = window.PaystackPop.setup({
       key: publicKey,
       ref: String(data.reference || ''),
       access_code: String(data.access_code || ''),
-      callback: async function (response) {
-        try {
-          await verifyReference(String(response.reference || data.reference || ''))
-          await loadPaymentHistory()
-        } catch (error) {
-          showMessage(error?.message || 'Payment verification failed after checkout.', 'text-red-600')
-        } finally {
-          if (payBtn) payBtn.disabled = false
-        }
+      callback: function (response) {
+        onSuccess(response)
       },
-      onClose: function () {
-        showMessage('Checkout closed before payment confirmation.', 'text-amber-700')
-        if (payBtn) payBtn.disabled = false
-      },
+      onClose: onCancel,
     })
 
     if (!data.access_code && data.authorization_url) {
