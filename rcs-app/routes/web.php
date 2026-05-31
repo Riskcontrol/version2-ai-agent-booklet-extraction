@@ -4,6 +4,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AdminPartnerCreditSyncController;
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\PartnerTrackingController;
+use App\Http\Controllers\UserAccountController;
 
 Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
 Route::post('/login', [AuthController::class, 'login'])->name('login.submit');
@@ -27,6 +28,10 @@ Route::middleware(['App\Http\Middleware\CheckAuth'])->group(function () {
     })->name('logs');
 
     Route::get('/tracking/{doc}', [PartnerTrackingController::class, 'show'])->name('tracking.show');
+
+    Route::get('/settings', [UserAccountController::class, 'show'])->name('settings');
+    Route::post('/settings/profile', [UserAccountController::class, 'updateProfile'])->name('settings.profile');
+    Route::post('/settings/password', [UserAccountController::class, 'updatePassword'])->name('settings.password');
 
     Route::get('/admin/partner-credit-sync-events', [AdminPartnerCreditSyncController::class, 'index'])
         ->name('admin.partnerCreditSyncEvents');

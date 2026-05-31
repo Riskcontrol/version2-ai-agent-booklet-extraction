@@ -26,6 +26,7 @@
                         <a href="{{ route('certificates') }}" class="text-sm px-3 py-2 rounded-lg bg-white/30 hover:bg-white/50 transition font-medium">Certificates</a>
                         <a href="{{ route('topup') }}" class="text-sm px-3 py-2 rounded-lg bg-white/30 hover:bg-white/50 transition font-medium">Top up</a>
                         <a href="{{ route('logs') }}" class="text-sm px-3 py-2 rounded-lg bg-white/30 hover:bg-white/50 transition font-medium">Logs</a>
+                        <a href="{{ route('settings') }}" class="text-sm px-3 py-2 rounded-lg bg-white/30 hover:bg-white/50 transition font-medium">Settings</a>
                         @if(in_array(strtolower((string) session('user_email')), array_map('trim', explode(',', strtolower((string) config('services.partner.audit_admin_emails', 'admin@rcsn.com')))), true))
                             <a href="{{ route('admin.partnerCreditSyncEvents') }}" class="text-sm px-3 py-2 rounded-lg bg-white/30 hover:bg-white/50 transition font-medium">Sync Audit</a>
                         @endif
