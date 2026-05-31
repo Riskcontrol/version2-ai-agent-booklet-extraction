@@ -189,6 +189,5 @@
         </div>
     </footer>
 
-    <script src="https://js.paystack.co/v1/inline.js"></script>
 </body>
 </html>
