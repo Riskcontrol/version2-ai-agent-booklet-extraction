@@ -157,6 +157,7 @@ class PartnerCreditController extends Controller
         $payload = [
             'user_email' => $userEmail,
             'requested_credits' => (int) $data['requested_credits'],
+            'callback_url' => url('/top-up'),
         ];
 
         $response = Http::withHeaders($this->signedPartnerHeaders('POST', '/api/partner/paystack/initialize', $payload))
