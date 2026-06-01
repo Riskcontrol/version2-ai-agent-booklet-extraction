@@ -192,6 +192,10 @@ async function loadPaymentHistory() {
 
   if (year) params.set('year', year)
   if (month) params.set('month', month)
+  // Pass the browser's UTC offset so the server can filter by local-timezone month
+  // boundaries instead of raw UTC MONTH(). getTimezoneOffset() returns minutes
+  // west of UTC (negative for east-of-UTC zones like WAT/UTC+1 = -60).
+  params.set('tz_offset', String(new Date().getTimezoneOffset()))
 
   showPaymentHistoryMessage('Loading payment history...', 'text-gray-600')
 

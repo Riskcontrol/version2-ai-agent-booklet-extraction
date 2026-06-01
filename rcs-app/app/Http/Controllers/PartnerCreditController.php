@@ -111,12 +111,14 @@ class PartnerCreditController extends Controller
             'user_email' => $userEmail,
             'year' => $request->query('year'),
             'month' => $request->query('month'),
+            'tz_offset' => $request->query('tz_offset'),
         ], static fn ($value) => $value !== null && $value !== '');
 
         $validator = validator($payload, [
             'user_email' => 'required|email',
             'year' => 'nullable|integer|min:2000|max:2100',
             'month' => 'nullable|integer|min:1|max:12',
+            'tz_offset' => 'nullable|integer|min:-840|max:840',
         ]);
 
         if ($validator->fails()) {
