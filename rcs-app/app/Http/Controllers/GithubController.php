@@ -5,10 +5,12 @@ namespace App\Http\Controllers;
 use App\Models\Certificate;
 use App\Models\Document;
 use App\Models\Student;
+use App\Services\SignatureService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 class GithubController extends Controller
 {
@@ -20,24 +22,38 @@ class GithubController extends Controller
 
         $baseUrl = rtrim((string) config('services.partner.base_url', ''), '/');
         $token = (string) config('services.partner.token', '');
-        if ($baseUrl === '' || $token === '') {
+        $partnerName = (string) config('services.partner.partner_name', 'riskcontrol');
+        $secret = (string) config('services.partner.signature_secret', '');
+        if ($baseUrl === '' || $token === '' || $secret === '') {
             return;
         }
+
+        $finalizePath = '/api/partner/finalize-extraction';
+        $finalizePayload = [
+            'partner_request_id' => (string) $doc->partner_request_id,
+            'status' => $status,
+            'pages_processed' => (int) ($pagesProcessed ?? $doc->pages_requested ?? 0),
+            'pages_with_results' => (int) ($pagesWithResults ?? $doc->pages_with_results ?? 0),
+            'failed_reason' => $failedReason,
+        ];
+        $body = (string) json_encode($finalizePayload);
+        $sig = SignatureService::generateSignature($secret, 'POST', $finalizePath, $body);
 
         try {
             $response = Http::withHeaders([
                     'X-Partner-Token' => $token,
+                    'X-Partner-Name' => $partnerName,
+                    'X-Partner-Signature' => $sig['signature'],
+                    'X-Partner-Timestamp' => $sig['timestamp'],
+                    'X-Partner-Nonce' => $sig['nonce'],
+                    'X-Signature-Algorithm' => $sig['algorithm'],
+                    'Idempotency-Key' => (string) Str::uuid(),
                     'Accept' => 'application/json',
                 ])
+                ->asJson()
                 ->connectTimeout(5)
                 ->timeout((int) config('services.partner.timeout', 15))
-                ->post($baseUrl . '/api/partner/finalize-extraction', [
-                    'partner_request_id' => (string) $doc->partner_request_id,
-                    'status' => $status,
-                    'pages_processed' => (int) ($pagesProcessed ?? $doc->pages_requested ?? 0),
-                    'pages_with_results' => (int) ($pagesWithResults ?? $doc->pages_with_results ?? 0),
-                    'failed_reason' => $failedReason,
-                ]);
+                ->post($baseUrl . $finalizePath, $finalizePayload);
 
             if ($response->successful()) {
                 $payload = (array) $response->json();
@@ -45,9 +61,11 @@ class GithubController extends Controller
                 $doc->credits_refunded = (int) ($payload['credits_refunded'] ?? $doc->credits_refunded ?? 0);
                 $doc->credit_status = (string) ($payload['status'] ?? $doc->credit_status ?? 'none');
                 $doc->save();
+            } else {
+                Log::warning('partner finalize failed (github callback)', ['doc_id' => $doc->id, 'http_status' => $response->status()]);
             }
         } catch (\Throwable $e) {
-            Log::warning('partner finalize exception', ['doc_id' => $doc->id, 'message' => $e->getMessage()]);
+            Log::warning('partner finalize exception (github callback)', ['doc_id' => $doc->id, 'message' => $e->getMessage()]);
         }
     }
 

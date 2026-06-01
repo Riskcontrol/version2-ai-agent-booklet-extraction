@@ -442,6 +442,7 @@ class DocumentController extends Controller
                     'result_upload_url' => url(route('github.uploadResults', [], false)),
                     'doc_id' => (string)$doc->id,
                     'api_key_tier' => $workflowApiTier,
+                    'partner_request_id' => $shadowMode ? null : $partnerRequestId,
                 ];
                 if ($req->filled('start_page')) {
                     $payload['page_start'] = (int)$req->input('start_page');
@@ -630,15 +631,16 @@ class DocumentController extends Controller
         if (!empty($pat)) {
             try {
                 $payload = [
-                    'source_url'        => $sourceUrl,
-                    'original_filename' => $file->getClientOriginalName(),
-                    'callback_url'      => url(route('github.callback', [], false)),
-                    'result_upload_url' => url(route('github.uploadResults', [], false)),
-                    'doc_id'            => (string)$doc->id,
-                    'api_key_tier'      => $workflowApiTier,
-                    'date_received'     => $doc->date_received ?? '',
-                    'completed_date'    => $doc->completed_date ?? '',
-                    'client_name'       => $doc->client_name ?? '',
+                    'source_url'          => $sourceUrl,
+                    'original_filename'   => $file->getClientOriginalName(),
+                    'callback_url'        => url(route('github.callback', [], false)),
+                    'result_upload_url'   => url(route('github.uploadResults', [], false)),
+                    'doc_id'              => (string)$doc->id,
+                    'api_key_tier'        => $workflowApiTier,
+                    'date_received'       => $doc->date_received ?? '',
+                    'completed_date'      => $doc->completed_date ?? '',
+                    'client_name'         => $doc->client_name ?? '',
+                    'partner_request_id'  => $shadowMode ? null : $partnerRequestId,
                 ];
                 Http::withToken($pat)
                     ->post('https://api.github.com/repos/Riskcontrol/version2-ai-agent-booklet-extraction/dispatches', [
