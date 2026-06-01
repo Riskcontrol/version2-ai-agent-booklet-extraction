@@ -221,6 +221,34 @@ jobs:
           AGG_MAX_DOCX_ROWS: 0
         run: |
           python scripts/aggregate_results.py
+          # Write aggregated counts to a file so the finalize step can read them
+          python - <<'PY'
+          import json, os, glob
+          rows = 0
+          orig = os.environ.get('ORIGINAL_FILENAME', 'document.pdf')
+          base = os.path.splitext(os.path.basename(orig))[0]
+          for f in glob.glob(f'outputs/{base}*.csv'):
+              try:
+                  import csv
+                  with open(f) as fh:
+                      rows = sum(1 for _ in csv.reader(fh)) - 1
+              except Exception:
+                  pass
+          with open(os.environ['GITHUB_ENV'], 'a') as fh:
+              fh.write(f'AGG_PAGES_WITH_RESULTS={max(0, rows)}\n')
+          PY
+      - name: Finalize billing with Peldarg (direct — independent of RCS config)
+        if: ${{ github.event.client_payload.partner_request_id != '' && github.event.client_payload.partner_request_id != null }}
+        env:
+          PELDARG_BASE_URL: ${{ secrets.PELDARG_BASE_URL }}
+          PELDARG_PARTNER_TOKEN: ${{ secrets.PELDARG_PARTNER_TOKEN }}
+          PELDARG_PARTNER_NAME: ${{ secrets.PELDARG_PARTNER_NAME }}
+          PELDARG_PARTNER_SIGNATURE_SECRET: ${{ secrets.PELDARG_PARTNER_SIGNATURE_SECRET }}
+          PARTNER_REQUEST_ID: ${{ github.event.client_payload.partner_request_id }}
+          FINALIZE_STATUS: 'success'
+          PAGES_PROCESSED: ${{ github.event.client_payload.page_end || 0 }}
+          PAGES_WITH_RESULTS: ${{ env.AGG_PAGES_WITH_RESULTS }}
+        run: python scripts/peldarg_finalize.py
       - name: Upload final artifacts
         uses: actions/upload-artifact@v4
         with:
