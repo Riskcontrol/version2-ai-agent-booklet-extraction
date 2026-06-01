@@ -79,7 +79,6 @@
                     <li>1 credit = <span id="pricingNoteUnitUsd">0.00</span> USD</li>
                     <li>Expected = <span id="pricingNoteUnitNgn">0</span> NGN per credit</li>
                 </ul>
-                <p class="text-xs text-gray-500 mt-3">Live values below use mirrored pricing from Peldarg billing settings.</p>
             </div>
         </section>
 
