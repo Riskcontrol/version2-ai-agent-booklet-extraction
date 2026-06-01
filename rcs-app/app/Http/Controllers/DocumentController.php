@@ -8,12 +8,14 @@ use App\Models\PartnerAuthorizationDecision;
 use App\Models\PartnerAuthorizationRejection;
 use App\Models\Student;
 use App\Services\PartnerIntegrationModeService;
+use App\Services\SignatureService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Str;
 use Symfony\Component\HttpKernel\Exception\HttpException;
 
 class DocumentController extends Controller
@@ -118,6 +120,27 @@ class DocumentController extends Controller
         ]);
     }
 
+    private function signedPartnerHeaders(string $method, string $path, array $payload): array
+    {
+        $token = (string) config('services.partner.token', '');
+        $partnerName = (string) config('services.partner.partner_name', 'riskcontrol');
+        $secret = (string) config('services.partner.signature_secret', '');
+
+        $body = (string) json_encode($payload);
+        $sig = SignatureService::generateSignature($secret, strtoupper($method), $path, $body);
+
+        return [
+            'X-Partner-Token' => $token,
+            'X-Partner-Name' => $partnerName,
+            'X-Partner-Signature' => $sig['signature'],
+            'X-Partner-Timestamp' => $sig['timestamp'],
+            'X-Partner-Nonce' => $sig['nonce'],
+            'X-Signature-Algorithm' => $sig['algorithm'],
+            'Idempotency-Key' => (string) Str::uuid(),
+            'Accept' => 'application/json',
+        ];
+    }
+
     private function authorizePartner(Request $req, int $pagesRequested, string $extractionType, array $workloadMetadata, string $partnerRequestId): array
     {
         $baseUrl = rtrim((string) config('services.partner.base_url', ''), '/');
@@ -139,14 +162,14 @@ class DocumentController extends Controller
             'workload_metadata' => $workloadMetadata,
         ];
 
+        $authPath = '/api/partner/authorize-extraction';
+
         try {
-            $response = Http::withHeaders([
-                    'X-Partner-Token' => $token,
-                    'Accept' => 'application/json',
-                ])
+            $response = Http::withHeaders($this->signedPartnerHeaders('POST', $authPath, $requestPayload))
+                ->asJson()
                 ->connectTimeout(5)
                 ->timeout((int) config('services.partner.timeout', 15))
-                ->post($baseUrl . '/api/partner/authorize-extraction', $requestPayload);
+                ->post($baseUrl . $authPath, $requestPayload);
 
             $payload = (array) ($response->json() ?? []);
             if ($response->successful()) {
@@ -178,7 +201,9 @@ class DocumentController extends Controller
             );
 
             if (PartnerIntegrationModeService::shouldHardBlock()) {
-                abort($response->status() >= 400 ? $response->status() : 502, (string) $message);
+                // Use 503 (not the raw Peldarg status) so the frontend never mistakes
+                // a billing-system 401/422 for an RCS session expiry.
+                abort(503, (string) $message);
             }
 
             // Shadow mode: keep extraction flow active while preserving decision logs.
@@ -236,20 +261,21 @@ class DocumentController extends Controller
             return;
         }
 
+        $finalizePath = '/api/partner/finalize-extraction';
+        $finalizePayload = [
+            'partner_request_id' => (string) $doc->partner_request_id,
+            'status' => $status,
+            'pages_processed' => (int) ($pagesProcessed ?? $doc->pages_requested ?? 0),
+            'pages_with_results' => (int) ($pagesWithResults ?? $doc->pages_with_results ?? 0),
+            'failed_reason' => $failedReason,
+        ];
+
         try {
-            $response = Http::withHeaders([
-                    'X-Partner-Token' => $token,
-                    'Accept' => 'application/json',
-                ])
+            $response = Http::withHeaders($this->signedPartnerHeaders('POST', $finalizePath, $finalizePayload))
+                ->asJson()
                 ->connectTimeout(5)
                 ->timeout((int) config('services.partner.timeout', 15))
-                ->post($baseUrl . '/api/partner/finalize-extraction', [
-                    'partner_request_id' => (string) $doc->partner_request_id,
-                    'status' => $status,
-                    'pages_processed' => (int) ($pagesProcessed ?? $doc->pages_requested ?? 0),
-                    'pages_with_results' => (int) ($pagesWithResults ?? $doc->pages_with_results ?? 0),
-                    'failed_reason' => $failedReason,
-                ]);
+                ->post($baseUrl . $finalizePath, $finalizePayload);
 
             if ($response->successful()) {
                 $payload = (array) $response->json();
