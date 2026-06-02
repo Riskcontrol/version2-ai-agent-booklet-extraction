@@ -92,6 +92,21 @@ class GithubController extends Controller
         $doc = $docId ? Document::find($docId) : Document::where('filename', $payload['filename'] ?? '')->latest()->first();
         if (!$doc) return response()->noContent();
 
+        $callbackStatus = ($payload['status'] ?? 'success') === 'failed' ? 'failed' : 'success';
+
+        // Handle failure callback from the on_failure job
+        if ($callbackStatus === 'failed') {
+            if (!in_array($doc->status, ['complete', 'failed'], true)) {
+                $doc->status = 'failed';
+                $doc->failed_reason = (string) ($payload['failed_reason'] ?? 'GitHub Actions workflow failed');
+                $doc->pages_processed = 0;
+                $doc->pages_with_results = 0;
+                $doc->save();
+            }
+            $this->finalizePartner($doc, 'failed', 0, 0, $doc->failed_reason);
+            return response()->json(['ok' => true]);
+        }
+
         // Do not overwrite URLs from the upload-results step with runner-local paths like "outputs/*.csv".
         // Only mark status complete here and (optionally) set URLs if they are absolute http(s) links and current fields are empty.
         $doc->status = 'complete';
