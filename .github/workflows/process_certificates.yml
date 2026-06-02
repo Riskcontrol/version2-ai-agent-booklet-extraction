@@ -29,6 +29,11 @@ jobs:
         id: probe
         run: |
           PAGES=$(pdfinfo source.pdf | awk -F: '/Pages/ {print $2}' | xargs)
+          # Fallback: if pdfinfo fails or returns empty, default to 1 so the matrix is never empty
+          if [ -z "$PAGES" ] || ! echo "$PAGES" | grep -qE '^[0-9]+$'; then
+            echo "[probe] pdfinfo returned '${PAGES}', defaulting to 1"
+            PAGES=1
+          fi
           echo "total_pages=$PAGES" >> $GITHUB_OUTPUT
       - name: Upload source artifact
         uses: actions/upload-artifact@v4
@@ -56,7 +61,7 @@ jobs:
             f.write('matrix='+out+'\n')
           PY
         env:
-          TOTAL: ${{ steps.probe.outputs.total_pages }}
+          TOTAL: ${{ steps.probe.outputs.total_pages || '1' }}
           SIZE: ${{ github.event.client_payload.chunk_size || 10 }}
           SINGLE_CHUNK: ${{ github.event.client_payload.single_chunk || 'true' }}
 
@@ -234,3 +239,65 @@ jobs:
           name: outputs
           path: outputs/*
           overwrite: true
+
+  # ── Failure notification ────────────────────────────────────────────────────
+  # Runs ONLY when plan, extract, or aggregate jobs fail.
+  # Notifies RCS (marks doc failed → frontend updates) and Peldarg (refunds credits).
+  on_failure:
+    needs: [plan, extract, aggregate]
+    if: failure()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install requests
+        run: python -m pip install --quiet requests
+      - name: Notify RCS of failure (marks document failed, frontend updates)
+        env:
+          CALLBACK_URL: ${{ github.event.client_payload.callback_url || 'https://search.riskcontrolnigeria.com/api/github/callback' }}
+          CALLBACK_HMAC_SECRET: ${{ secrets.CALLBACK_HMAC_SECRET }}
+          DOC_ID: ${{ github.event.client_payload.doc_id }}
+          ORIGINAL_FILENAME: ${{ github.event.client_payload.original_filename }}
+        run: |
+          python - <<'PY'
+          import hashlib, hmac, json, os, requests
+          url = os.environ.get('CALLBACK_URL', '').strip()
+          secret = os.environ.get('CALLBACK_HMAC_SECRET', '').strip()
+          if not url:
+              print('[on_failure] CALLBACK_URL not set — skipping RCS notification')
+              raise SystemExit(0)
+          payload = json.dumps({
+              'status': 'failed',
+              'doc_id': os.environ.get('DOC_ID', ''),
+              'filename': os.environ.get('ORIGINAL_FILENAME', ''),
+              'failed_reason': 'GitHub Actions workflow failed (see run logs)',
+              'pages_processed': 0,
+              'pages_with_results': 0,
+          }).encode('utf-8')
+          headers = {'Content-Type': 'application/json'}
+          if secret:
+              headers['X-Extractor-Signature'] = hmac.new(secret.encode(), payload, hashlib.sha256).hexdigest()
+          try:
+              r = requests.post(url, data=payload, headers=headers, timeout=30)
+              print(f'[on_failure] RCS callback HTTP {r.status_code}')
+          except Exception as e:
+              print(f'[on_failure] RCS callback error: {repr(e)}')
+          PY
+      - name: Notify Peldarg of failure (refunds reserved credits)
+        if: ${{ github.event.client_payload.partner_request_id != '' && github.event.client_payload.partner_request_id != null }}
+        env:
+          PELDARG_BASE_URL: ${{ secrets.PELDARG_BASE_URL }}
+          PELDARG_PARTNER_TOKEN: ${{ secrets.PELDARG_PARTNER_TOKEN }}
+          PELDARG_PARTNER_NAME: ${{ secrets.PELDARG_PARTNER_NAME }}
+          PELDARG_PARTNER_SIGNATURE_SECRET: ${{ secrets.PELDARG_PARTNER_SIGNATURE_SECRET }}
+          PARTNER_REQUEST_ID: ${{ github.event.client_payload.partner_request_id }}
+          FINALIZE_STATUS: 'failed'
+          PAGES_PROCESSED: '0'
+          PAGES_WITH_RESULTS: '0'
+          FAILED_REASON: 'GitHub Actions workflow failed'
+        run: python scripts/peldarg_finalize.py
