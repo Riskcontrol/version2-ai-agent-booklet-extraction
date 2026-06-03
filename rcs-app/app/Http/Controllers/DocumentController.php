@@ -62,6 +62,17 @@ class DocumentController extends Controller
             return 0;
         }
 
+        // Check PDF magic bytes (%PDF-) — rejects HTML files, images, etc. masquerading as PDFs
+        $fh = @fopen($path, 'rb');
+        if ($fh !== false) {
+            $magic = fread($fh, 5);
+            fclose($fh);
+            if ($magic !== '%PDF-') {
+                $error = 'not_a_pdf';
+                return 0;
+            }
+        }
+
         if (is_callable('exec')) {
             try {
                 $cmd = 'pdfinfo ' . escapeshellarg($path) . ' 2>/dev/null';
@@ -376,7 +387,10 @@ class DocumentController extends Controller
         $pageCountError = null;
         $totalPages = $this->detectPdfPageCount($file->getRealPath(), $pageCountError);
         if ($totalPages < 1) {
-            abort(422, 'Unable to read PDF page count. Please re-export the PDF and try again.');
+            $msg = $pageCountError === 'not_a_pdf'
+                ? 'The uploaded file is not a valid PDF. Please ensure you are uploading an actual PDF document (not an HTML page, image, or renamed file).'
+                : 'Unable to read PDF page count. Please re-export the PDF and try again.';
+            abort(422, $msg);
         }
 
         $startPage = $req->filled('start_page') ? (int) $req->input('start_page') : 1;
@@ -572,7 +586,10 @@ class DocumentController extends Controller
         $pageCountError = null;
         $totalPages = $this->detectPdfPageCount($file->getRealPath(), $pageCountError);
         if ($totalPages < 1) {
-            abort(422, 'Unable to read PDF page count. Please re-export the PDF and try again.');
+            $msg = $pageCountError === 'not_a_pdf'
+                ? 'The uploaded file is not a valid PDF. Please ensure you are uploading an actual PDF document (not an HTML page, image, or renamed file).'
+                : 'Unable to read PDF page count. Please re-export the PDF and try again.';
+            abort(422, $msg);
         }
 
         $partnerRequestId = (string) \Illuminate\Support\Str::uuid();

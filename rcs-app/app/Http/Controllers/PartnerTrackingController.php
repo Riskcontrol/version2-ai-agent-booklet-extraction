@@ -171,6 +171,17 @@ class PartnerTrackingController extends Controller
 
         $tracking = (array) $response->json();
 
+        // If Peldarg reports the job has failed, sync that back to the local doc
+        // so the status column updates immediately (even if the on_failure callback
+        // was blocked due to missing GitHub secrets).
+        $peldargPhase = strtolower((string) ($tracking['phase'] ?? ''));
+        if ($peldargPhase === 'failed' && !in_array($doc->status, ['complete', 'failed'], true)) {
+            $doc->status = 'failed';
+            $doc->failed_reason = $doc->failed_reason
+                ?: ($tracking['failed_reason'] ?? 'GitHub Actions workflow failed');
+            $doc->save();
+        }
+
         if ($this->trackingObservabilityEnabled()) {
             Log::info('tracking.progress.read.success', [
                 'document_id' => (int) $doc->id,
