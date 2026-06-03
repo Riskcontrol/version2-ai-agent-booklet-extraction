@@ -176,11 +176,16 @@ async function loadCreditSummary() {
     if ($('#unitPriceUsd')) $('#unitPriceUsd').textContent = String(moneyFmtUSD(pricing.unitPriceUsd))
     if ($('#fxRateNgn')) $('#fxRateNgn').textContent = String(moneyFmtNGN(pricing.fxRateNgn))
     if ($('#billingAuthority')) $('#billingAuthority').textContent = 'Google Cloud'
+    if ($('#creditSummaryMsg')) $('#creditSummaryMsg').textContent = ''
 
     computeTopUpEstimate()
 
     showMessage('Credit summary synced from Google Cloud.', 'text-green-700')
   } catch (err) {
+    if ($('#creditSummaryMsg')) {
+      $('#creditSummaryMsg').textContent = err?.message || 'Unable to load credit summary.'
+      $('#creditSummaryMsg').className = 'mt-2 text-xs text-red-600'
+    }
     showMessage(err?.message || 'Unable to load credit summary.', 'text-red-600')
   }
 }
