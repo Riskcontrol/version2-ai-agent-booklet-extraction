@@ -22,7 +22,16 @@ jobs:
           sudo apt-get install -y poppler-utils
       - name: Download source PDF
         run: |
-          curl -L "$SOURCE_URL" -o source.pdf
+          HTTP_CODE=$(curl -L --fail-with-body -w "%{http_code}" -o source.pdf "$SOURCE_URL" 2>&1 || true)
+          # Validate the downloaded file starts with %PDF- magic bytes
+          MAGIC=$(head -c 5 source.pdf 2>/dev/null || true)
+          if [ "$MAGIC" != "%PDF-" ]; then
+            echo "[download] ERROR: Downloaded file is not a valid PDF (got: $(head -c 20 source.pdf | cat -v))"
+            echo "[download] HTTP code was: $HTTP_CODE"
+            echo "[download] This usually means the signed download URL expired or the file was not a PDF when uploaded."
+            exit 1
+          fi
+          echo "[download] PDF magic bytes OK, HTTP code: $HTTP_CODE"
         env:
           SOURCE_URL: ${{ github.event.client_payload.source_url }}
       - name: Probe pages
