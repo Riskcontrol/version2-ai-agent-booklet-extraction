@@ -46,7 +46,7 @@
                     <div>
                         <p class="text-xs font-semibold uppercase tracking-[0.2em] text-gray-500">Billing Mirror</p>
                         <h2 class="text-xl font-semibold text-gray-900 mt-1">Read-only credit balance</h2>
-                        <p class="text-sm text-gray-600 mt-1">Paystack is configured in Google Cloud. Checkout runs here as inline popup while verification remains in Google Cloud.</p>
+
                         <div id="creditSummaryMsg" class="mt-2 text-xs text-gray-500">Loading credit summary...</div>
                     </div>
                     <div class="text-right">
