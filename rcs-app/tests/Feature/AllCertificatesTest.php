@@ -46,7 +46,9 @@ class AllCertificatesTest extends TestCase
             'http://partner.test/api/partner/authorize-extraction' => Http::response([
                 'api_tier' => 'paid_1', 'credits_reserved' => 2, 'credit_balance' => 8,
             ]),
-            'https://api.github.com/*' => Http::response([], 204),
+            'https://api.github.com/*' => fn (Request $r) => count($r['client_payload']) > 10
+                ? Http::response(['message' => 'No more than 10 properties are allowed.'], 422)
+                : Http::response([], 204),
         ]);
         $response = $this->postJson('/api/all-certificates/upload', [
             'file' => $this->pdf(), 'client_name' => 'Test Client', 'date_received' => '02/11/2026',
@@ -60,8 +62,10 @@ class AllCertificatesTest extends TestCase
             && $r['workload_metadata']['certificate_layout'] === 'all');
         Http::assertSent(fn (Request $r) => str_ends_with($r->url(), '/dispatches')
             && $r['event_type'] === 'process_certificates'
-            && $r['client_payload']['certificate_layout'] === 'all'
-            && $r['client_payload']['page_end'] === 2
+            && count($r['client_payload']) <= 10
+            && $r['client_payload']['certificate_metadata']['layout'] === 'all'
+            && $r['client_payload']['certificate_metadata']['date_received'] === '02/11/2026'
+            && $r['client_payload']['certificate_metadata']['client_name'] === 'Test Client'
             && $r['client_payload']['api_key_tier'] === 'GEMINI_API_KEY_PAID');
     }
 

@@ -661,11 +661,14 @@ class DocumentController extends Controller
                     'result_upload_url'   => url(route('github.uploadResults', [], false)),
                     'doc_id'              => (string)$doc->id,
                     'api_key_tier'        => $workflowApiTier,
-                    'date_received'       => $doc->date_received ?? '',
-                    'completed_date'      => $doc->completed_date ?? '',
-                    'client_name'         => $doc->client_name ?? '',
-                    'certificate_layout'  => $layout,
-                    'page_end'            => $totalPages,
+                    // GitHub repository_dispatch permits at most 10 top-level
+                    // client_payload properties. Keep certificate fields nested.
+                    'certificate_metadata' => [
+                        'date_received' => $doc->date_received ?? '',
+                        'completed_date' => $doc->completed_date ?? '',
+                        'client_name' => $doc->client_name ?? '',
+                        'layout' => $layout,
+                    ],
                     'partner_request_id'  => $shadowMode ? null : $partnerRequestId,
                 ];
                 Http::withToken($pat)

@@ -104,11 +104,11 @@ jobs:
           ORIGINAL_FILENAME: ${{ github.event.client_payload.original_filename }}
           GEMINI_API_KEY: ${{ secrets[github.event.client_payload.api_key_tier] || secrets.GEMINI_API_KEY_FREE_TIER_1 }}
           # Only the aggregate job uploads and finalizes, after all output is ready.
-          CERTIFICATE_LAYOUT: ${{ github.event.client_payload.certificate_layout || 'academic' }}
+          CERTIFICATE_LAYOUT: ${{ github.event.client_payload.certificate_metadata.layout || github.event.client_payload.certificate_layout || 'academic' }}
           DOC_ID: ${{ github.event.client_payload.doc_id }}
-          DATE_RECEIVED: ${{ github.event.client_payload.date_received }}
-          COMPLETED_DATE: ${{ github.event.client_payload.completed_date }}
-          CLIENT_NAME: ${{ github.event.client_payload.client_name }}
+          DATE_RECEIVED: ${{ github.event.client_payload.certificate_metadata.date_received || github.event.client_payload.date_received }}
+          COMPLETED_DATE: ${{ github.event.client_payload.certificate_metadata.completed_date || github.event.client_payload.completed_date }}
+          CLIENT_NAME: ${{ github.event.client_payload.certificate_metadata.client_name || github.event.client_payload.client_name }}
           DPI: 240
         run: |
           python scripts/run_certificate_agent.py
@@ -205,10 +205,10 @@ jobs:
           RESULT_UPLOAD_TOKEN: ${{ secrets.RESULT_UPLOAD_TOKEN }}
           DOC_ID: ${{ github.event.client_payload.doc_id }}
           EXTRACTION_TYPE: certificates
-          CERTIFICATE_LAYOUT: ${{ github.event.client_payload.certificate_layout || 'academic' }}
-          CLIENT_NAME: ${{ github.event.client_payload.client_name }}
-          DATE_RECEIVED: ${{ github.event.client_payload.date_received }}
-          COMPLETED_DATE: ${{ github.event.client_payload.completed_date }}
+          CERTIFICATE_LAYOUT: ${{ github.event.client_payload.certificate_metadata.layout || github.event.client_payload.certificate_layout || 'academic' }}
+          CLIENT_NAME: ${{ github.event.client_payload.certificate_metadata.client_name || github.event.client_payload.client_name }}
+          DATE_RECEIVED: ${{ github.event.client_payload.certificate_metadata.date_received || github.event.client_payload.date_received }}
+          COMPLETED_DATE: ${{ github.event.client_payload.certificate_metadata.completed_date || github.event.client_payload.completed_date }}
           AGG_SKIP_DOCX: 'true'
           AGG_MAX_DOCX_ROWS: 0
         run: |
