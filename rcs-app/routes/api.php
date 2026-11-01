@@ -39,6 +39,8 @@ Route::middleware(['web', 'App\Http\Middleware\CheckAuth'])->group(function () {
     Route::post('/certificates/upload', [DocumentController::class, 'uploadCertificates']);
     Route::get('/certificates', [DocumentController::class, 'indexCertificates']);
     Route::delete('/certificates/{doc}', [DocumentController::class, 'deleteCertificate']);
+    Route::post('/all-certificates/upload', [DocumentController::class, 'uploadAllCertificates']);
+    Route::get('/all-certificates', [DocumentController::class, 'indexAllCertificates']);
 });
 
 Route::get('/download/{doc}', [DocumentController::class, 'download'])

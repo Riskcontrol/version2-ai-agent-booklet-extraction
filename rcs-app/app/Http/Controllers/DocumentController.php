@@ -573,7 +573,12 @@ class DocumentController extends Controller
     // Certificates
     // -----------------------------------------------------------------------
 
-    public function uploadCertificates(Request $req)
+    public function uploadAllCertificates(Request $req)
+    {
+        return $this->uploadCertificates($req, 'all');
+    }
+
+    public function uploadCertificates(Request $req, string $layout = 'academic')
     {
         $req->validate([
             'file'           => 'required|mimes:pdf|max:102400',
@@ -601,6 +606,7 @@ class DocumentController extends Controller
                 $totalPages,
                 'certificates',
                 [
+                    'certificate_layout' => $layout,
                     'date_received' => (string) ($req->input('date_received') ?? ''),
                     'completed_date' => (string) ($req->input('completed_date') ?? ''),
                     'client_name' => (string) ($req->input('client_name') ?? ''),
@@ -629,6 +635,7 @@ class DocumentController extends Controller
             'path'           => $path,
             'status'         => 'processing',
             'extraction_type'=> 'certificates',
+            'certificate_layout' => $layout,
             'date_received'  => $req->input('date_received'),
             'completed_date' => $req->input('completed_date'),
             'client_name'    => $req->input('client_name'),
@@ -657,6 +664,8 @@ class DocumentController extends Controller
                     'date_received'       => $doc->date_received ?? '',
                     'completed_date'      => $doc->completed_date ?? '',
                     'client_name'         => $doc->client_name ?? '',
+                    'certificate_layout'  => $layout,
+                    'page_end'            => $totalPages,
                     'partner_request_id'  => $shadowMode ? null : $partnerRequestId,
                 ];
                 Http::withToken($pat)
@@ -683,9 +692,14 @@ class DocumentController extends Controller
         ]);
     }
 
-    public function indexCertificates()
+    public function indexAllCertificates()
     {
-        $docs = $this->applyFilters(Document::query()->where('extraction_type', 'certificates'), request(), true)->latest()->get();
+        return $this->indexCertificates('all');
+    }
+
+    public function indexCertificates(string $layout = 'academic')
+    {
+        $docs = $this->applyFilters(Document::query()->where('extraction_type', 'certificates')->where('certificate_layout', $layout), request(), true)->latest()->get();
         $docs->transform(function ($d) {
             $d->csv_download  = $d->csv_url  ? URL::temporarySignedRoute('documents.downloadOutput', now()->addHours(12), ['doc' => $d->id, 'type' => 'csv'])  : null;
             $d->xlsx_download = $d->xlsx_url ? URL::temporarySignedRoute('documents.downloadOutput', now()->addHours(12), ['doc' => $d->id, 'type' => 'xlsx']) : null;

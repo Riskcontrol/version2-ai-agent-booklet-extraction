@@ -1,8 +1,10 @@
 import { PDFDocument } from 'pdf-lib'
 
+const allCertificates = document.body.dataset.certificateLayout === 'all'
+const certificateBase = allCertificates ? '/api/all-certificates' : '/api/certificates'
 const API = {
-  upload: '/api/certificates/upload',
-  list: '/api/certificates',
+  upload: `${certificateBase}/upload`,
+  list: certificateBase,
   summary: '/api/credit-summary',
   delete: (id) => `/api/certificates/${id}`,
 }
@@ -10,6 +12,19 @@ const API = {
 let totalPagesDetected = null
 let countingPages = false
 let availableCredits = 0
+let preparedFile = null
+let fileSelectionVersion = 0
+
+async function prepareCertificateFile(file) {
+  if (!allCertificates || !['image/jpeg', 'image/png'].includes(file.type)) return file
+  const pdf = await PDFDocument.create()
+  const bytes = await file.arrayBuffer()
+  const image = file.type === 'image/png' ? await pdf.embedPng(bytes) : await pdf.embedJpg(bytes)
+  const scale = Math.min(1, 1440 / Math.max(image.width, image.height))
+  const page = pdf.addPage([image.width * scale, image.height * scale])
+  page.drawImage(image, { x: 0, y: 0, width: page.getWidth(), height: page.getHeight() })
+  return new File([await pdf.save()], file.name.replace(/\.[^.]+$/, '') + '.pdf', { type: 'application/pdf' })
+}
 
 function $(sel) { return document.querySelector(sel) }
 function el(tag, attrs = {}) { const e = document.createElement(tag); Object.assign(e, attrs); return e }
@@ -262,9 +277,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if (fileNode) {
     fileNode.addEventListener('change', async () => {
+      const selectionVersion = ++fileSelectionVersion
       const msg = $('#uploadMsg')
       const file = fileNode.files?.[0]
+      preparedFile = null
       totalPagesDetected = null
+      countingPages = false
       updateCreditPreview(null)
       updateUploadGate()
       if (!file) return
@@ -276,7 +294,10 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       try {
-        const detected = await detectPdfPages(file)
+        const candidate = await prepareCertificateFile(file)
+        const detected = await detectPdfPages(candidate)
+        if (selectionVersion !== fileSelectionVersion) return
+        preparedFile = candidate
         totalPagesDetected = detected > 0 ? detected : null
         updateCreditPreview(totalPagesDetected)
         updateUploadGate()
@@ -286,14 +307,17 @@ document.addEventListener('DOMContentLoaded', () => {
           msg.className = 'mt-3 text-sm text-green-700'
         }
       } catch {
+        if (selectionVersion !== fileSelectionVersion) return
         if (msg) {
-          msg.textContent = 'Unable to auto-detect page count from this PDF. Upload stays disabled until page count is detected.'
+          msg.textContent = 'Unable to read this file. Please select a valid PDF' + (allCertificates ? ', JPG or PNG.' : '.')
           msg.className = 'mt-3 text-sm text-amber-700'
         }
         updateUploadGate()
       } finally {
-        countingPages = false
-        updateUploadGate()
+        if (selectionVersion === fileSelectionVersion) {
+          countingPages = false
+          updateUploadGate()
+        }
       }
     })
   }
@@ -302,7 +326,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   if (up) up.addEventListener('submit', async (e) => {
     e.preventDefault()
-    const f = $('#file').files[0]
+    const f = preparedFile
     if (!f) return
 
     const maxUploadMb = Number(up.dataset.maxUploadMb || 0)
@@ -410,7 +434,11 @@ document.addEventListener('DOMContentLoaded', () => {
           loadDocs({ fromPoll: false })
           loadCreditSummary()
           up.reset()
-          uploadBtn.disabled = false
+          preparedFile = null
+          totalPagesDetected = null
+          ++fileSelectionVersion
+          updateCreditPreview(null)
+          updateUploadGate()
         }, 2000)
       } else {
         throw new Error(result.message || result.error || 'Upload failed')

@@ -7,6 +7,7 @@ from typing import Dict, List
 import hmac
 import hashlib
 import requests
+from certificate_schema import all_certificate_export
 
 
 CONVOCATION_COLS = [
@@ -36,7 +37,7 @@ def clean_cell_upper(v) -> str:
     return clean_cell(v).upper()
 
 
-def save_outputs(df: pd.DataFrame, base: str, out_dir: str, *, skip_docx: bool = False, max_docx_rows: int = 3000) -> Dict[str,str]:
+def save_outputs(df: pd.DataFrame, base: str, out_dir: str, *, skip_docx: bool = False, max_docx_rows: int = 3000, certificate_layout: str = 'academic') -> Dict[str,str]:
     os.makedirs(out_dir, exist_ok=True)
     paths: Dict[str, str] = {}
     csv_path = os.path.join(out_dir, base + '.csv')
@@ -44,7 +45,27 @@ def save_outputs(df: pd.DataFrame, base: str, out_dir: str, *, skip_docx: bool =
     df.to_csv(csv_path, index=False)
     print(f"[agg] Wrote CSV: {csv_path}")
     try:
-        df.to_excel(xlsx_path, index=False)
+        export = all_certificate_export(df) if certificate_layout == 'all' else df
+        with pd.ExcelWriter(xlsx_path, engine='openpyxl') as writer:
+            export.to_excel(writer, index=False, sheet_name='All Certificate' if certificate_layout == 'all' else 'Sheet1')
+            if certificate_layout == 'all':
+                from openpyxl.styles import Alignment, Font, PatternFill
+                from openpyxl.utils import get_column_letter
+                sheet = writer.sheets['All Certificate']
+                sheet.freeze_panes = 'A2'
+                sheet.auto_filter.ref = sheet.dimensions
+                for column, width in enumerate([18, 26, 36, 55, 24, 24, 18, 18, 45], 1):
+                    sheet.column_dimensions[get_column_letter(column)].width = width
+                    cell = sheet.cell(1, column)
+                    cell.font = Font(bold=True, color='FFFFFF')
+                    cell.fill = PatternFill('solid', fgColor='14532D')
+                    cell.alignment = Alignment(wrap_text=True, vertical='center')
+                sheet.row_dimensions[1].height = 32
+                for row in sheet.iter_rows(min_row=2):
+                    for cell in row:
+                        # IDs remain strings, and document text never becomes a formula.
+                        cell.data_type = 's'
+                        cell.alignment = Alignment(wrap_text=True, vertical='top')
         paths['xlsx'] = xlsx_path
         print(f"[agg] Wrote XLSX: {xlsx_path}")
     except Exception as e:
@@ -94,8 +115,13 @@ def upload_results(upload_url: str, token: str, doc_id: str, paths: Dict[str,str
             headers['X-Extractor-Token'] = token
         resp = requests.post(upload_url, files=files, data=data, headers=headers, timeout=120)
         print('[agg] Upload results status:', resp.status_code)
+        resp.raise_for_status()
     except Exception as e:
         print('[agg] Upload results error:', repr(e))
+        raise
+    finally:
+        for file in files.values():
+            file[1].close()
 
 
 def main():
@@ -107,6 +133,7 @@ def main():
     result_upload_token = os.getenv('RESULT_UPLOAD_TOKEN', '')
     doc_id = os.getenv('DOC_ID', '')
     extraction_type = os.getenv('EXTRACTION_TYPE', '').strip().lower()
+    certificate_layout = os.getenv('CERTIFICATE_LAYOUT', 'academic').strip()
     fallback_client_name = os.getenv('CLIENT_NAME', '').strip()
     fallback_date_received = os.getenv('DATE_RECEIVED', '').strip()
     fallback_completed_date = os.getenv('COMPLETED_DATE', '').strip()
@@ -124,7 +151,7 @@ def main():
     frames: List[pd.DataFrame] = []
     for idx, f in enumerate(csv_files, start=1):
         try:
-            df = pd.read_csv(f)
+            df = pd.read_csv(f, dtype=str, keep_default_na=False)
             frames.append(df)
             if idx % 25 == 0 or idx == len(csv_files):
                 print(f"[agg] Loaded {idx}/{len(csv_files)} files; last {os.path.basename(f)} -> {len(df)} rows")
@@ -171,11 +198,28 @@ def main():
         max_docx_rows = int(os.getenv('AGG_MAX_DOCX_ROWS', '3000') or '3000')
     except Exception:
         max_docx_rows = 3000
-    paths = save_outputs(df_all, base, out_dir, skip_docx=skip_docx, max_docx_rows=max_docx_rows)
+    paths = save_outputs(df_all, base, out_dir, skip_docx=skip_docx, max_docx_rows=max_docx_rows,
+                         certificate_layout=certificate_layout if extraction_type == 'certificates' else 'academic')
+
+    page_counts = {}
+    if extraction_type == 'certificates':
+        count_files = sorted(glob.glob(os.path.join(chunks_dir, f'**/{base}-p*.json'), recursive=True))
+        if not count_files:
+            raise SystemExit('Certificate page counts are missing; cannot safely finalize billing')
+        page_counts = {'pages_processed': 0, 'pages_with_results': 0}
+        for filename in count_files:
+            with open(filename) as fh:
+                counts = json.load(fh)
+            for key in page_counts:
+                page_counts[key] += int(counts[key])
+        with open(os.path.join(out_dir, base + '.counts.json'), 'w') as fh:
+            json.dump(page_counts, fh)
 
     summary = {
         'status': 'success',
-        'counts': { 'rows': int(after) },
+        'counts': { 'rows': int(after), **page_counts },
+        **page_counts,
+        'doc_id': doc_id,
         'chunks': len(frames),
         'files': paths,
         'filename': original_filename,
@@ -195,8 +239,10 @@ def main():
         try:
             cr = requests.post(callback_url, data=payload, headers=headers, timeout=60)
             print('[agg] Callback status:', cr.status_code)
+            cr.raise_for_status()
         except Exception as e:
             print('[agg] Callback error:', repr(e))
+            raise
     else:
         print('[agg] CALLBACK_URL not set; skipping callback')
 

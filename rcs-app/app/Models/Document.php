@@ -8,7 +8,7 @@ class Document extends Model
 {
     protected $fillable = [
         'filename', 'path', 'session', 'status', 'csv_url', 'xlsx_url', 'docx_url',
-        'extraction_type', 'date_received', 'completed_date', 'client_name',
+        'extraction_type', 'certificate_layout', 'date_received', 'completed_date', 'client_name',
         'user_email', 'partner_request_id', 'payment_reference', 'api_key_tier', 'page_start', 'page_end',
         'pages_requested', 'pages_processed', 'pages_with_results', 'result_rows', 'credits_reserved',
         'credits_consumed', 'credits_refunded', 'credit_status', 'failed_reason',

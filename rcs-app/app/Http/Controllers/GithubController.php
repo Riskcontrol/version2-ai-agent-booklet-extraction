@@ -124,7 +124,7 @@ class GithubController extends Controller
         $counts = is_array($payload['counts'] ?? null) ? $payload['counts'] : [];
         $rowsCount = is_array($payload['rows'] ?? null) ? count($payload['rows']) : (int) ($counts['rows'] ?? 0);
         $doc->pages_processed = (int) ($payload['pages_processed'] ?? $counts['pages_processed'] ?? $doc->pages_requested ?? 0);
-        $doc->pages_with_results = (int) ($payload['pages_with_results'] ?? $counts['rows'] ?? $rowsCount);
+        $doc->pages_with_results = (int) ($payload['pages_with_results'] ?? $counts['pages_with_results'] ?? $counts['rows'] ?? $rowsCount);
         $doc->result_rows = $rowsCount;
         $doc->save();
 
@@ -247,7 +247,7 @@ class GithubController extends Controller
 
         $doc->status = 'complete';
         $doc->pages_processed = (int) ($req->input('pages_processed') ?? $counts['pages_processed'] ?? $doc->pages_requested ?? 0);
-        $doc->pages_with_results = (int) ($req->input('pages_with_results') ?? $counts['rows'] ?? 0);
+        $doc->pages_with_results = (int) ($req->input('pages_with_results') ?? $counts['pages_with_results'] ?? $counts['rows'] ?? 0);
         $doc->save();
 
         $this->finalizePartner($doc, 'success', $doc->pages_processed, $doc->pages_with_results);

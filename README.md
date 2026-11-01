@@ -33,6 +33,46 @@ End‑to‑end pipeline: upload a Convocation PDF in the Laravel app, process it
 - php artisan serve --host=127.0.0.1 --port=8000
 - Open http://127.0.0.1:8000/ (convocation UI is served by Blade)
 
+## All Certificate page
+
+`/all-certificates` is an additional authenticated page for academic certificates,
+ICAN, Call to Bar, NYSC, WAEC, NECO and NABTEB. The original `/certificates` page
+keeps its academic extraction layout and document history. The new page accepts
+PDFs and JPG/PNG images; images are converted in the browser into a one-page PDF.
+Mixed certificates can be uploaded together in a PDF, with one output row per
+certificate rather than per subject.
+
+The Excel download follows the supplied template in this order:
+Date Received, Clients, Names, Institution, Courses, Qualification, Grade, Session,
+Exam Number/Call-up Number/Matric number. NYSC, WAEC, NECO and NABTEB use their
+abbreviation for Courses and Qualification and use PASS for Grade, as requested.
+Academic and professional certificates retain their printed programme, award and
+overall grade when available. Missing or illegible fields remain blank. The CSV
+retains the existing internal field names for database import; the Excel download
+uses the template headings. Identifiers remain text to preserve leading zeros.
+
+Billing still uses `extraction_type=certificates`, the existing Peldarg authorization,
+paid workflow tier and finalization/refund paths. It reserves one credit per PDF
+page (one per image), irrespective of the number of certificate records on a page.
+The certificate workflow now carries actual processed-page and result-page counts
+through aggregation, and only aggregation uploads/finalizes the output.
+
+To activate this change, deploy the Laravel changes, built frontend assets, Python
+scripts and `.github/workflows/process_certificates.yml` together. Run
+`php artisan migrate --force` on the application server, then refresh its route,
+view and configuration caches with `php artisan optimize:clear` followed by the
+deployment's usual cache-building commands. The migration adds a defaulted
+`certificate_layout` column; existing documents retain the academic layout.
+
+Checks (without live billing or Gemini requests):
+
+```bash
+cd rcs-app
+APP_CONFIG_CACHE=/tmp/rcs-test-config.php APP_ROUTES_CACHE=/tmp/rcs-test-routes.php php vendor/bin/phpunit --filter AllCertificatesTest
+```
+
+From the repository root: `python3 -m unittest discover -s scripts/tests -v`.
+
 ## Endpoints
 - POST /api/upload
 - GET  /api/documents

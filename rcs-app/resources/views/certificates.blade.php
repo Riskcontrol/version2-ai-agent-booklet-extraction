@@ -1,29 +1,33 @@
+@php
+    $allCertificates = $allCertificates ?? false;
+@endphp
 <!doctype html>
 <html lang="en">
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Risk Control Services Nigeria — Certificates Extractor</title>
+    <title>Risk Control Services Nigeria — {{ $allCertificates ? 'All Certificate' : 'Certificates Extractor' }}</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     @vite(['resources/css/app.css','resources/js/certificates.js'])
 </head>
-<body class="bg-green-50 text-gray-900 font-sans">
+<body data-certificate-layout="{{ $allCertificates ? 'all' : 'academic' }}" class="bg-green-50 text-gray-900 font-sans">
     <header class="bg-gradient-to-r from-lime-500 to-lime-300 text-[#0a2912] border-b-4 border-lime-600">
-        <div class="max-w-5xl mx-auto px-4 py-4">
-            <div class="flex items-center justify-between">
+        <div class="max-w-7xl mx-auto px-4 py-4">
+            <div class="flex flex-wrap gap-4 items-center justify-between">
                 <div class="flex items-center gap-3">
                     <div class="w-10 h-10 rounded-full bg-[#0a2912] text-white flex items-center justify-center font-bold">RC</div>
                     <div>
                         <h1 class="m-0 text-lg font-semibold">Risk Control Services Nigeria</h1>
-                        <p class="m-0 text-xs opacity-90">Certificates Extraction Console</p>
+                        <p class="m-0 text-xs opacity-90">{{ $allCertificates ? 'All Certificate Extraction Console' : 'Certificates Extraction Console' }}</p>
                     </div>
                 </div>
-                <div class="flex items-center gap-3">
-                    <nav class="flex gap-2">
+                <div class="flex flex-wrap items-center gap-3">
+                    <nav class="flex flex-wrap gap-2">
                         <a href="{{ route('dashboard') }}" class="text-sm px-3 py-2 rounded-lg bg-white/30 hover:bg-white/50 transition font-medium">Convocation</a>
-                        <a href="{{ route('certificates') }}" class="text-sm px-3 py-2 rounded-lg bg-[#0a2912] text-white transition font-medium">Certificates</a>
+                        <a href="{{ route('certificates') }}" class="text-sm px-3 py-2 rounded-lg {{ $allCertificates ? 'bg-white/30 hover:bg-white/50' : 'bg-[#0a2912] text-white' }} transition font-medium">Certificates</a>
+                        <a href="{{ route('all-certificates') }}" class="text-sm px-3 py-2 rounded-lg {{ request()->routeIs('all-certificates') ? 'bg-[#0a2912] text-white' : 'bg-white/30 hover:bg-white/50' }} transition font-medium">All Certificate</a>
                         <a href="{{ route('topup') }}" class="text-sm px-3 py-2 rounded-lg bg-white/30 hover:bg-white/50 transition font-medium">Top up</a>
                         <a href="{{ route('logs') }}" class="text-sm px-3 py-2 rounded-lg bg-white/30 hover:bg-white/50 transition font-medium">Logs</a>
                         <a href="{{ route('settings') }}" class="text-sm px-3 py-2 rounded-lg bg-white/30 hover:bg-white/50 transition font-medium">Settings</a>
@@ -52,7 +56,7 @@
         $effectiveUploadLimitMb = max(1, min($uploadLimitMb, $postLimitMb));
     @endphp
 
-    <main class="max-w-5xl mx-auto px-4 py-6">
+    <main class="max-w-7xl mx-auto px-4 py-6">
         <section class="grid gap-4 md:grid-cols-4 mb-6">
             <div class="bg-white border border-gray-200 rounded-xl p-4 shadow-sm md:col-span-3">
                 <div class="flex items-start justify-between gap-4">
@@ -82,33 +86,36 @@
         </section>
 
         <section class="bg-white border border-gray-200 rounded-xl p-4 shadow-sm mb-6">
-            <h2 class="text-xl font-semibold mb-4">Upload Certificates PDF</h2>
+            <h2 class="text-xl font-semibold mb-4">{{ $allCertificates ? 'All Certificate' : 'Upload Certificates PDF' }}</h2>
+            @if($allCertificates)
+                <p class="text-sm text-gray-600 mb-4">Extract academic certificates, ICAN, Call to Bar, NYSC, WAEC, NECO and NABTEB. Upload a PDF with one or multiple certificates, or a JPG/PNG image.</p>
+            @endif
             <form id="uploadForm" class="space-y-3" method="POST" action="javascript:void(0);" onsubmit="return false;" data-max-upload-mb="{{ $effectiveUploadLimitMb }}">
                 @csrf
                 <div class="flex flex-col gap-2">
-                    <label for="file" class="font-medium">PDF File</label>
-                    <input id="file" name="file" type="file" accept="application/pdf" required class="rounded-lg border border-gray-300 px-3 py-2 outline-none focus:border-lime-500" />
-                    <small class="text-gray-500 text-xs">Server upload limit: {{ $effectiveUploadLimitMb }}MB (PDF only)</small>
+                    <label for="file" class="font-medium">{{ $allCertificates ? 'Certificate file' : 'PDF File' }}</label>
+                    <input id="file" name="file" type="file" accept="{{ $allCertificates ? 'application/pdf,image/jpeg,image/png' : 'application/pdf' }}" required class="rounded-lg border border-gray-300 px-3 py-2 outline-none focus:border-lime-500" />
+                    <small class="text-gray-500 text-xs">Server upload limit: {{ $effectiveUploadLimitMb }}MB ({{ $allCertificates ? 'PDF, JPG or PNG. Each image counts as one page.' : 'PDF only' }})</small>
                 </div>
 
-                <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div class="grid grid-cols-1 {{ $allCertificates ? 'sm:grid-cols-2' : 'sm:grid-cols-3' }} gap-3">
                     <div class="flex flex-col gap-2">
                         <label for="date_received" class="font-medium">Date Received <span class="text-gray-400 font-normal text-xs">(optional)</span></label>
                         <input id="date_received" name="date_received" type="text" placeholder="e.g. 01/01/2024" class="rounded-lg border border-gray-300 px-3 py-2 outline-none focus:border-lime-500" />
                     </div>
+                    @unless($allCertificates)
                     <div class="flex flex-col gap-2">
                         <label for="completed_date" class="font-medium">Completed Date <span class="text-gray-400 font-normal text-xs">(optional)</span></label>
                         <input id="completed_date" name="completed_date" type="text" placeholder="e.g. 15/03/2024" class="rounded-lg border border-gray-300 px-3 py-2 outline-none focus:border-lime-500" />
                     </div>
+                    @endunless
                     <div class="flex flex-col gap-2">
                         <label for="client_name" class="font-medium">Client Name <span class="text-gray-400 font-normal text-xs">(optional)</span></label>
                         <input id="client_name" name="client_name" type="text" placeholder="e.g. First Bank PLC" class="rounded-lg border border-gray-300 px-3 py-2 outline-none focus:border-lime-500" />
                     </div>
                 </div>
 
-                <div class="rounded-lg bg-lime-50 border border-lime-100 p-3 text-sm text-gray-700">
-                    Workflow key control is enforced by Google Cloud. This portal submits workload metadata only, and certificate dispatch runs only after partner approval for the paid tier.
-                </div>
+                <p class="text-sm text-gray-600">Credits are reserved before processing and settled when results are ready. One credit covers one page.</p>
 
                 <div class="rounded-lg border border-lime-100 bg-lime-50 p-3 text-sm text-gray-700">
                     <div>Total pages in file: <span id="totalPages" class="font-semibold">-</span></div>
@@ -131,6 +138,22 @@
             </form>
             <div id="uploadMsg" class="mt-3 text-sm"></div>
         </section>
+
+        @if($allCertificates)
+        <section class="bg-white border border-gray-200 rounded-xl p-4 shadow-sm mb-6">
+            <h2 class="text-lg font-semibold mb-2">Excel output arrangement</h2>
+            <p class="text-sm text-gray-600 mb-3">One row per certificate. NYSC, WAEC, NECO and NABTEB use PASS in the Grade column.</p>
+            <div class="overflow-x-auto">
+                <table class="w-full text-sm border-collapse">
+                    <thead><tr class="bg-lime-50">
+                        @foreach(['Date Received', 'Clients', 'Names', 'Institution', 'Courses', 'Qualification', 'Grade', 'Session', 'Exam Number/Call-up Number/Matric number'] as $column)
+                            <th class="text-left p-3 border whitespace-nowrap">{{ $column }}</th>
+                        @endforeach
+                    </tr></thead>
+                </table>
+            </div>
+        </section>
+        @endif
 
         <input id="filter_extraction_type" type="hidden" value="certificates" />
 
@@ -164,7 +187,7 @@
     </main>
 
     <footer class="text-center text-green-900 py-6">
-        <div class="max-w-5xl mx-auto px-4">
+        <div class="max-w-7xl mx-auto px-4">
             <small>© <span id="year"></span> Risk Control Services Nigeria</small>
         </div>
     </footer>

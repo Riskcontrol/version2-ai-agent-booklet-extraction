@@ -14,6 +14,7 @@ import shutil
 from typing import Dict
 from pathlib import Path
 import importlib.util
+from certificate_schema import all_certificate_export
 
 import requests
 import pandas as pd
@@ -121,7 +122,8 @@ def main() -> int:
             print('[cert_runner] Neither SOURCE_FILE nor SOURCE_URL provided')
             return 2
 
-        extractor = CertificatePDFExtractor(api_key=api_key)
+        layout = os.getenv('CERTIFICATE_LAYOUT', 'academic').strip()
+        extractor = CertificatePDFExtractor(api_key=api_key, layout=layout)
         records = extractor.process_pdf(
             pdf_path,
             dpi=dpi,
@@ -146,9 +148,15 @@ def main() -> int:
         csv_path = os.path.join(out_dir, base + '.csv')
         xlsx_path = os.path.join(out_dir, base + '.xlsx')
         df.to_csv(csv_path, index=False)
+        # Aggregation owns upload/callback and billing finalization. Persist true
+        # page counts separately: multiple certificates on a page still cost one page.
+        with open(os.path.join(out_dir, base + '.counts.json'), 'w') as fh:
+            json.dump({'pages_processed': extractor.pages_processed,
+                       'pages_with_results': extractor.pages_with_results}, fh)
         print(f'[cert_runner] CSV written: {csv_path}')
         try:
-            df.to_excel(xlsx_path, index=False)
+            export = all_certificate_export(df) if layout == 'all' else df
+            export.to_excel(xlsx_path, index=False)
             print(f'[cert_runner] XLSX written: {xlsx_path}')
         except Exception as e:
             print(f'[cert_runner] XLSX write failed: {e}')
