@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\Document;
+use App\Models\VerificationBatch;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 
@@ -57,16 +58,25 @@ class PartnerReconciliationController extends Controller
             $query->whereNull('extraction_type')->orWhere('extraction_type', 'convocation');
         });
         $certificates = (clone $base)->where('extraction_type', 'certificates');
+        $verification = VerificationBatch::whereBetween('created_at', [$from, $to])
+            ->whereIn('status', ['complete', 'failed']);
+        // Comparison work is authorized as certificates. Include successful
+        // pages retained from partial failures, without counting reserved pages.
+        $verificationPages = (int) (clone $verification)->sum('pages_processed');
+        $completedVerification = (clone $verification)->where('status', 'complete');
+        $verificationFiles = (int) (clone $completedVerification)->sum('files_processed');
 
         return response()->json([
             'date_from' => $from->toDateString(),
             'date_to' => $to->toDateString(),
-            'processed_pages_total' => $this->sumResolvedPages(clone $base),
+            'processed_pages_total' => $this->sumResolvedPages(clone $base) + $verificationPages,
             'booklet_pages_total' => $this->sumResolvedPages(clone $booklet),
-            'certificate_pages_total' => $this->sumResolvedPages(clone $certificates),
-            'completed_documents_total' => (int) (clone $base)->count(),
+            'certificate_pages_total' => $this->sumResolvedPages(clone $certificates) + $verificationPages,
+            'completed_documents_total' => (int) (clone $base)->count() + $verificationFiles,
             'completed_booklets_total' => (int) (clone $booklet)->count(),
-            'completed_certificates_total' => (int) (clone $certificates)->count(),
+            'completed_certificates_total' => (int) (clone $certificates)->count() + $verificationFiles,
+            'verification_pages_total' => $verificationPages,
+            'completed_verification_batches_total' => (int) (clone $completedVerification)->count(),
         ]);
     }
 }

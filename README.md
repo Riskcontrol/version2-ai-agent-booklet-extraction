@@ -134,3 +134,95 @@ If you prefer not to use GitHub’s hosted runners for long extractions:
 - Register a self‑hosted runner on a machine with Tesseract and Poppler.
 - Ensure Python 3.11 and the packages in `requirements.txt` are installed.
 - The same workflow will run on your runner (change `runs-on` to your label if needed).
+
+## Verify Certificate & Report
+
+`/verify-certificate-report` accepts unordered ZIP archives containing certificate
+PDFs and RCS verification-report PDFs. Each qualification is a separate record;
+consent forms and supporting pages do not become certificate records. Original
+PDFs remain in private storage and source previews require the batch owner's
+session. The system compares supplied documents; it does not contact institutions.
+
+The flow is: sequential ZIP upload → background inventory → explicit page/credit
+confirmation → background extraction → matching and field comparisons → review.
+The default limits are a 1 GiB ZIP, 1,200 PDFs, 10,000 PDF pages, 128 MiB per PDF,
+4 GiB expanded archive content, and four parallel extraction processes. Upload
+requests contain at most 512 KiB each. Non-PDF files and nested archives are listed
+as excluded; unsafe paths, symlinks, encrypted files and invalid PDFs fail inventory.
+The PHP server keeps the ZIP without unpacking it; workers inspect it independently.
+
+**No automatic retries or resume:** upload chunks, model calls, HTTP requests and
+worker execution each receive one attempt. Reuploading creates a separate batch
+and a new credit authorization for all its pages, regardless of previous uploads.
+GitHub workflow reruns cannot reacquire a claimed/closed batch. Staff can correct
+pairings using stored values without re-extraction or another credit charge.
+
+Inventory is unbilled. Extraction reserves one credit per PDF page across both
+certificates and reports, including supporting pages. Completion or failure uses
+the existing partner finalize/refund contract with actual successfully processed
+page counts, never record counts. Failed pages are not automatically processed
+again. Completed page results are saved immediately and survive other file/page failures. Billing calls are
+not retried: uncertain authorization/settlement is displayed for administrator
+review. Batches with no progress for eight hours are closed when their status is
+next read, keeping available results and making at most one settlement attempt.
+
+The six required comparison fields are name, institution, course, qualification,
+grade and graduation session/year. Student identifiers are compared only when
+both sources show them. Results are Yes, Disparity or Needs review. Names tolerate
+order/capitalization/punctuation for comparison, but spelling differences remain
+visible. Matching uses a shared student ID or sufficiently strong name, institution,
+award and year evidence; grade and course do not gate candidate matching. Conflicting
+IDs, weak evidence and competing candidates require review. Explicit equivalence
+rules cover standard degree abbreviations, end-of-session graduation years and the
+Lagos State Polytechnic / Agricultural Engineering wording in the supplied sample;
+other material wording differences are retained for review rather than guessed away.
+
+Downloads include a result CSV and an Excel workbook with Results and Field
+comparisons sheets. Unmatched reports are included. Corrections update downloads
+and are recorded with the staff member, previous/new report, time and explanation.
+
+### Deployment
+
+Deploy the Laravel changes, built `public/build` assets, `scripts/verification_worker.py`
+and `.github/workflows/verify_certificate_report.yml` together. On Hostinger, PHP
+must have the `zip` extension enabled and `storage/app/private` must be writable
+with enough disk capacity for retained ZIP files. No PHP queue worker or Python
+installation is required on Hostinger; extraction runs on GitHub Actions.
+
+From the deployed `rcs-app` directory:
+
+```bash
+php artisan migrate --path=database/migrations/2026_11_02_000002_create_verification_tables.php --force
+php artisan optimize:clear
+php artisan config:cache
+```
+
+The existing `GITHUB_PAT`, signed partner billing credentials, and extractor HMAC
+secret are required. The application's `CALLBACK_HMAC_SECRET` (or
+`EXTRACTOR_CALLBACK_SECRET`) must match the GitHub `CALLBACK_HMAC_SECRET` secret;
+GitHub also needs `GEMINI_API_KEY_PAID`. Set `APP_URL` to the actual HTTPS portal
+address so signed archive URLs and callbacks reach the deployed application.
+`VERIFICATION_GITHUB_REPOSITORY` optionally overrides the existing extraction repo.
+A new partner billing operation is identified in `workload_metadata` while keeping
+`extraction_type=certificates` and the existing paid-tier authorization contract.
+
+Deploy without changing existing document routes. Validate inventory, a small
+paid comparison batch, source access and credit settlement before a 600-document
+production batch. Never rerun a failed workflow to reprocess: upload a new batch.
+
+### Verification checks
+
+```bash
+cd rcs-app
+APP_CONFIG_CACHE=/tmp/rcs-test-config.php APP_ROUTES_CACHE=/tmp/rcs-test-routes.php php vendor/bin/phpunit --filter VerificationTest
+```
+
+From the repository root:
+
+```bash
+python3 -m unittest discover -s scripts/tests -p test_verification_worker.py -v
+```
+
+Tests use synthetic documents and mocked billing/model requests. The supplied ZIP
+was additionally checked locally for inventory and native report parsing. A live
+Gemini run and production partner billing still require a deployment smoke test.

@@ -8,6 +8,8 @@ use App\Http\Controllers\PartnerCreditController;
 use App\Http\Controllers\PartnerReconciliationController;
 use App\Http\Controllers\PartnerTrackingController;
 use App\Http\Controllers\SearchController;
+use App\Http\Controllers\VerificationController;
+use App\Http\Controllers\VerificationWorkerController;
 
 // These routes rely on session-based auth (CheckAuth uses Session::get('authenticated')).
 // API routes do not include session middleware by default, so we explicitly enable the `web`
@@ -41,7 +43,24 @@ Route::middleware(['web', 'App\Http\Middleware\CheckAuth'])->group(function () {
     Route::delete('/certificates/{doc}', [DocumentController::class, 'deleteCertificate']);
     Route::post('/all-certificates/upload', [DocumentController::class, 'uploadAllCertificates']);
     Route::get('/all-certificates', [DocumentController::class, 'indexAllCertificates']);
+
+    Route::get('/verifications', [VerificationController::class, 'index']);
+    Route::post('/verifications', [VerificationController::class, 'create']);
+    Route::post('/verifications/{batch}/chunks', [VerificationController::class, 'chunk']);
+    Route::post('/verifications/{batch}/finish-upload', [VerificationController::class, 'finishUpload']);
+    Route::get('/verifications/{batch}', [VerificationController::class, 'show']);
+    Route::post('/verifications/{batch}/start', [VerificationController::class, 'start']);
+    Route::get('/verifications/{batch}/results', [VerificationController::class, 'results']);
+    Route::get('/verifications/{batch}/records', [VerificationController::class, 'records']);
+    Route::post('/verifications/{batch}/pairings/{result}', [VerificationController::class, 'pairing']);
+    Route::get('/verifications/{batch}/audits', [VerificationController::class, 'audits']);
+    Route::get('/verifications/{batch}/sources/{source}', [VerificationController::class, 'source']);
+    Route::get('/verifications/{batch}/export/{format}', [VerificationController::class, 'export'])->where('format', 'csv|xlsx');
 });
+
+Route::get('/verification-worker/{batch}/archive', [VerificationController::class, 'archive'])
+    ->name('verification.archive')->middleware('signed');
+Route::post('/verification-worker/{batch}/callback', [VerificationWorkerController::class, 'callback'])->name('verification.callback');
 
 Route::get('/download/{doc}', [DocumentController::class, 'download'])
     ->name('documents.download')

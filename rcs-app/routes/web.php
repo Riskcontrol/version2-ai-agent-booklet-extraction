@@ -23,6 +23,8 @@ Route::middleware(['App\Http\Middleware\CheckAuth'])->group(function () {
         return view('certificates', ['allCertificates' => true]);
     })->name('all-certificates');
 
+    Route::view('/verify-certificate-report', 'verification')->name('verification');
+
     Route::get('/top-up', function () {
         return view('topup');
     })->name('topup');

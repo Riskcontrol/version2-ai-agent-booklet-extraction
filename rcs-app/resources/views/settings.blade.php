@@ -26,6 +26,7 @@
                         <a href="{{ route('dashboard') }}" class="text-sm px-3 py-2 rounded-lg bg-white/30 hover:bg-white/50 transition font-medium">Convocation</a>
                         <a href="{{ route('certificates') }}" class="text-sm px-3 py-2 rounded-lg bg-white/30 hover:bg-white/50 transition font-medium">Certificates</a>
                         <a href="{{ route('all-certificates') }}" class="text-sm px-3 py-2 rounded-lg {{ request()->routeIs('all-certificates') ? 'bg-[#0a2912] text-white' : 'bg-white/30 hover:bg-white/50' }} transition font-medium">All Certificate</a>
+                        <a href="{{ route('verification') }}" class="text-sm px-3 py-2 rounded-lg bg-white/30 hover:bg-white/50 transition font-medium">Verify Certificate &amp; Report</a>
                         <a href="{{ route('topup') }}" class="text-sm px-3 py-2 rounded-lg bg-white/30 hover:bg-white/50 transition font-medium">Top up</a>
                         <a href="{{ route('logs') }}" class="text-sm px-3 py-2 rounded-lg bg-white/30 hover:bg-white/50 transition font-medium">Logs</a>
                         <a href="{{ route('settings') }}" class="text-sm px-3 py-2 rounded-lg bg-[#0a2912] text-white transition font-medium">Settings</a>

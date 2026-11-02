@@ -20,6 +20,7 @@
                 <a href="{{ route('dashboard') }}" class="text-sm px-3 py-2 rounded-lg bg-white/30 hover:bg-white/50 transition font-medium">Convocation</a>
                 <a href="{{ route('certificates') }}" class="text-sm px-3 py-2 rounded-lg bg-white/30 hover:bg-white/50 transition font-medium">Certificates</a>
                 <a href="{{ route('all-certificates') }}" class="text-sm px-3 py-2 rounded-lg {{ request()->routeIs('all-certificates') ? 'bg-[#0a2912] text-white' : 'bg-white/30 hover:bg-white/50' }} transition font-medium">All Certificate</a>
+                <a href="{{ route('verification') }}" class="text-sm px-3 py-2 rounded-lg bg-white/30 hover:bg-white/50 transition font-medium">Verify Certificate &amp; Report</a>
                 <form method="POST" action="{{ route('logout') }}">
                     @csrf
                     <button type="submit" class="text-sm px-4 py-2 bg-[#0a2912] text-white rounded-lg hover:bg-opacity-90 transition">Logout</button>

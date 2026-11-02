@@ -1,0 +1,55 @@
+name: Verify Certificate & Report
+on:
+  repository_dispatch:
+    types: [verify_certificate_report]
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  PIP_RETRIES: '0'
+concurrency:
+  group: verification-${{ github.event.client_payload.batch_id }}
+  cancel-in-progress: false
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    env:
+      PHASE: ${{ github.event.client_payload.phase }}
+      SOURCE_URL: ${{ github.event.client_payload.source_url }}
+      CALLBACK_URL: ${{ github.event.client_payload.callback_url }}
+      CALLBACK_HMAC_SECRET: ${{ secrets.CALLBACK_HMAC_SECRET }}
+      WORKER_RUN: ${{ github.run_id }}-${{ github.run_attempt }}
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY_PAID }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.11'
+      - name: Install worker dependencies (one attempt)
+        run: python -m pip install --retries 0 -r requirements.txt
+      - name: Inventory or extract (one attempt; no rerun/resume)
+        run: python scripts/verification_worker.py
+      - name: Retain partial results and settle failed batch
+        if: ${{ failure() || cancelled() }}
+        # Standard library only: this still works if dependency installation failed.
+        run: |
+          python3 - <<'PY'
+          import hashlib, hmac, json, os, time, urllib.request
+          secret = os.environ.get('CALLBACK_HMAC_SECRET', '')
+          url = os.environ.get('CALLBACK_URL', '')
+          if not secret or not url:
+              raise SystemExit('Failure notification signing configuration is missing')
+          body = json.dumps({
+              'run': os.environ['WORKER_RUN'], 'phase': os.environ['PHASE'],
+              'kind': 'failed', 'event_key': 'failed:' + os.environ['WORKER_RUN'],
+              'reason': 'Worker failed or was cancelled. Completed records are retained. Upload again to process again.',
+          }, separators=(',', ':')).encode()
+          timestamp = str(int(time.time()))
+          signature = hmac.new(secret.encode(), timestamp.encode() + b'\n' + body, hashlib.sha256).hexdigest()
+          request = urllib.request.Request(url, data=body, headers={
+              'Content-Type': 'application/json', 'Accept': 'application/json',
+              'X-Verification-Timestamp': timestamp, 'X-Extractor-Signature': signature,
+          }, method='POST')
+          # Exactly one attempt. A failure is visible in the workflow logs.
+          with urllib.request.urlopen(request, timeout=90) as response:
+              print('Failure notification HTTP', response.status)
+          PY

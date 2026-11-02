@@ -4,7 +4,7 @@
     "name": "PDFButton"
   },
   "resources/css/app.css": {
-    "file": "assets/app-IrDNtKvK.css",
+    "file": "assets/app-CUDypzZO.css",
     "src": "resources/css/app.css",
     "isEntry": true,
     "names": [
@@ -51,6 +51,12 @@
     "file": "assets/tracking-DbxCfbdP.js",
     "name": "tracking",
     "src": "resources/js/tracking.js",
+    "isEntry": true
+  },
+  "resources/js/verification.js": {
+    "file": "assets/verification-Blwit-tp.js",
+    "name": "verification",
+    "src": "resources/js/verification.js",
     "isEntry": true
   }
 }
